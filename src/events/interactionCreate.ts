@@ -1,10 +1,61 @@
-import { Client, Interaction, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, TextChannel } from 'discord.js';
+import { Client, Interaction, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, TextChannel, DMChannel } from 'discord.js';
 import { VerificationModel } from '../database/schema';
 import { CONFIG } from '../config';
 import { sendToManualReview } from './messageCreate';
 import { getTargetRoleName, deleteModMailThread, getRoleMemberCount, sendVerificationLog } from '../utils/discord';
 
 export const onInteractionCreate = async (client: Client, interaction: Interaction) => {
+    // Handle Slash Commands
+    if (interaction.isChatInputCommand()) {
+        if (interaction.commandName === 'clear-my-dm') {
+            await interaction.deferReply({ ephemeral: true });
+
+            if (!interaction.channel?.isDMBased()) {
+                await interaction.editReply('This command can only be used in DMs.');
+                return;
+            }
+
+            try {
+                const channel = interaction.channel as DMChannel; // Correct type assertion for DM
+                // Fetch messages (limit 100)
+                const messages = await channel.messages.fetch({ limit: 100 });
+
+                // Filter bot's messages
+                const botMessages = messages.filter(m => m.author.id === client.user?.id);
+
+                if (botMessages.size === 0) {
+                    await interaction.editReply('No messages found to delete.');
+                    return;
+                }
+
+                await interaction.editReply(`Found ${botMessages.size} messages. Deleting...`);
+
+                // Delete one by one
+                for (const msg of botMessages.values()) {
+                    try {
+                        await msg.delete();
+                    } catch (e) {
+                        console.error(`Failed to delete message ${msg.id}:`, e);
+                    }
+                }
+
+                // Since we deleted our own reply (if it was in the list), we might need to send a new one?
+                // Actually, deferReply creates a message. If we delete it in the loop, we can't edit it.
+                // But we filtered for "author.id === client.user.id". The interaction reply IS from the bot.
+                // So we should be careful not to delete the "Deleting..." message if we want to show "Done".
+                // Or just delete everything and send a final one?
+
+                // Let's try to send a fresh followUp after deletion.
+                await interaction.followUp({ content: '✅ **Cleared all my messages.**', ephemeral: true });
+
+            } catch (error) {
+                console.error('Error clearing DMs:', error);
+                await interaction.editReply('❌ An error occurred while clearing messages.');
+            }
+        }
+        return;
+    }
+
     if (!interaction.isButton()) return;
 
     const { customId, user } = interaction;
