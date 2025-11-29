@@ -91,7 +91,7 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
                         ]
                     });
                 } catch (e) {
-                    console.log('Could not DM user');
+                    // Ignore
                 }
 
                 await interaction.editReply({ content: `❌ **Rejected** by <@${adminUser.id}>.\n**Reason:** ${reason}\nUser notified and role removed (if present).` });
@@ -104,6 +104,60 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
                     } catch (e) {
                         // Ignore if can't edit
                     }
+                }
+            } else if (interaction.customId.startsWith('revoke_reason_')) {
+                await interaction.deferReply({ ephemeral: false });
+
+                const targetUserId = interaction.customId.split('_')[2];
+                const reason = interaction.fields.getTextInputValue('reason');
+                const adminUser = interaction.user;
+
+                // 1. Remove Role
+                try {
+                    const guild = await client.guilds.fetch(CONFIG.GUILD_ID);
+                    const member = await guild.members.fetch(targetUserId).catch(() => null);
+                    if (member) {
+                        await member.roles.remove(CONFIG.ROLES.EARLY_SUPPORTER).catch(() => { });
+                    }
+                } catch (e) {
+                    console.error('Error removing role:', e);
+                }
+
+                // 2. Clear DB
+                await VerificationModel.findOneAndDelete({ userId: targetUserId });
+
+                // 3. Update Log Message (Disable button)
+                if (interaction.message) {
+                    try {
+                        const row = ActionRowBuilder.from(interaction.message.components[0] as any);
+                        row.components.forEach((component: any) => component.setDisabled(true));
+
+                        const embed = EmbedBuilder.from(interaction.message.embeds[0]);
+                        embed.setColor('#ff0000'); // Red for revoked
+                        embed.addFields({ name: 'Revoked By', value: `${adminUser.tag} (${adminUser.id})`, inline: false });
+                        embed.addFields({ name: 'Reason', value: reason, inline: false });
+
+                        await interaction.message.edit({ embeds: [embed], components: [row as any] });
+                    } catch (e) {
+                        console.error('Error updating log message:', e);
+                    }
+                }
+
+                // 4. Notify Admin
+                await interaction.editReply({ content: `✅ **Verification Revoked** for <@${targetUserId}>.\nReason: ${reason}` });
+
+                // 5. Notify User (Optional)
+                try {
+                    const targetUser = await client.users.fetch(targetUserId);
+                    await targetUser.send({
+                        embeds: [new EmbedBuilder()
+                            .setTitle('Verification Revoked')
+                            .setDescription(`Your Early Supporter status has been revoked by staff.\n\n**Reason:** ${reason}\n\nYou may re-apply if you believe this is an error.`)
+                            .setColor('#ff0000')
+                        ]
+                    });
+                } catch (e) {
+                    // Ignore if DM fails
                 }
             }
             return;
@@ -319,10 +373,11 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
 
                 await interaction.editReply({ content: '📝 **Manual Review Requested.**\nOur staff will review your screenshot shortly.' });
 
+                // Always send to manual review channel so staff can see it
+                await sendToManualReview(client, userRecord, user);
+
                 if (!userRecord.progress.instagram && customId === 'request_manual_review_yt') {
                     await user.send('Please now upload your **Instagram** screenshot.');
-                } else {
-                    await sendToManualReview(client, userRecord, user);
                 }
 
                 await userRecord.save();
@@ -420,6 +475,24 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
 
                 await interaction.showModal(modal);
 
+            } else if (customId.startsWith('revoke_verification_')) {
+                const targetUserId = customId.split('_')[2];
+
+                const modal = new ModalBuilder()
+                    .setCustomId(`revoke_reason_${targetUserId}`)
+                    .setTitle('Revoke Verification');
+
+                const reasonInput = new TextInputBuilder()
+                    .setCustomId('reason')
+                    .setLabel('Reason for revocation')
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setPlaceholder('e.g. Fake screenshot discovered later...')
+                    .setRequired(true);
+
+                const row = new ActionRowBuilder<TextInputBuilder>().addComponents(reasonInput);
+                modal.addComponents(row);
+
+                await interaction.showModal(modal);
             } else if (customId.startsWith('admin_start_chat_')) {
                 await interaction.deferReply({ ephemeral: true }); // Keep this ephemeral as it's just a link
 

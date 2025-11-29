@@ -196,7 +196,7 @@ export const validateYouTubeScreenshot = (ocrResult: OCRResult, referenceTime?: 
 
     if (!validTimeFound) {
         const detectedTimes = candidates.map(c => c.time).join(', ');
-        return { valid: false, error: `Timestamp verification failed. Detected: [${detectedTimes}]. Ensure your device time is correct and visible.` };
+        return { valid: false, error: `Timestamp verification failed. Ensure your device time is correct and visible.` };
     }
 
     return { valid: true, timestampDetected: validTime };
@@ -316,7 +316,7 @@ export const validateInstagramScreenshot = (ocrResult: OCRResult, referenceTime?
         addCandidate(finalTime, isStrict ? 4 : 1, isStrict);
     }
 
-    console.log('[Validation] Candidates found:', JSON.stringify(candidates));
+
 
     if (candidates.length === 0) {
         return { valid: false, error: 'No timestamp detected. Please ensure the system clock is visible in the screenshot.' };
@@ -325,7 +325,6 @@ export const validateInstagramScreenshot = (ocrResult: OCRResult, referenceTime?
     // FILTER: If we have ANY strict candidates (with AM/PM), discard the non-strict ones
     const hasStrict = candidates.some(c => c.isStrict);
     if (hasStrict) {
-        console.log('[Validation] Strict candidates found. Filtering out ambiguous ones.');
         candidates = candidates.filter(c => c.isStrict);
     }
 
@@ -348,7 +347,6 @@ export const validateInstagramScreenshot = (ocrResult: OCRResult, referenceTime?
         const d1 = moment(dateStr, ['MM/DD/YYYY', 'DD/MM/YYYY', 'M/D/YYYY', 'D/M/YYYY'], true);
         if (d1.isValid()) {
             detectedDate = d1;
-            console.log(`[Validation] Detected Date in Screenshot: ${d1.format('YYYY-MM-DD')}`);
         }
     }
 
@@ -358,8 +356,6 @@ export const validateInstagramScreenshot = (ocrResult: OCRResult, referenceTime?
     for (const candidate of candidates) {
         // Skip low priority candidates (video durations) if we have better ones
         // But we already filtered them.
-
-        console.log(`[Validation] Processing Candidate: "${candidate.time}" (Priority: ${candidate.priority}, Strict: ${candidate.isStrict})`);
 
         const possibleTimes = repairTimestamp(candidate.time);
         for (const time of possibleTimes) {
@@ -412,8 +408,6 @@ function isTimeValid(timeStr: string, referenceTime?: moment.Moment, detectedDat
     // Use provided reference time or default to current time
     const baseTime = referenceTime ? referenceTime.clone() : moment();
 
-    console.log(`[Validation] Checking Candidate: "${timeStr}" against Reference: ${baseTime.format('YYYY-MM-DD HH:mm')}`);
-
     // Check against System Time
     if (checkTimeMatch(timeStr, baseTime, detectedDate)) return true;
 
@@ -448,7 +442,6 @@ function checkTimeMatch(timeStr: string, referenceTime: moment.Moment, detectedD
     if (detectedDate) {
         // Strict Day Check: Must be SAME day as reference
         if (!detectedDate.isSame(referenceTime, 'day')) {
-            console.log(`[Validation] Date Mismatch! Screenshot: ${detectedDate.format('YYYY-MM-DD')} != Ref: ${referenceTime.format('YYYY-MM-DD')}`);
             return false;
         }
 
@@ -475,7 +468,6 @@ function checkTimeMatch(timeStr: string, referenceTime: moment.Moment, detectedD
         const comparisonTime = detected.clone().add(offset, 'days');
 
         const diff = Math.abs(referenceTime.diff(comparisonTime, 'minutes'));
-        console.log(`[Validation] Diff: ${diff} mins (Offset ${offset}d) | Comp: ${comparisonTime.format('HH:mm')} | Ref: ${referenceTime.format('HH:mm')}`);
 
         if (diff <= 5) return true;
 
@@ -484,14 +476,12 @@ function checkTimeMatch(timeStr: string, referenceTime: moment.Moment, detectedD
             const comparisonTimePM = comparisonTime.clone().add(12, 'hours');
             const diffPM = Math.abs(referenceTime.diff(comparisonTimePM, 'minutes'));
             if (diffPM <= 5) {
-                console.log(`[Validation] Passed via +12h offset (Ambiguous time)`);
                 return true;
             }
 
             const comparisonTimeAM = comparisonTime.clone().subtract(12, 'hours');
             const diffAM = Math.abs(referenceTime.diff(comparisonTimeAM, 'minutes'));
             if (diffAM <= 5) {
-                console.log(`[Validation] Passed via -12h offset (Ambiguous time)`);
                 return true;
             }
         }

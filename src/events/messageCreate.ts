@@ -7,12 +7,7 @@ import axios from 'axios';
 import { getTargetRoleName, deleteModMailThread, getRoleMemberCount, sendVerificationLog } from '../utils/discord';
 
 export const onMessageCreate = async (client: Client, message: Message) => {
-    console.log(`[DEBUG] Message received: ${message.id} from ${message.author.tag}`);
-    console.log(`[DEBUG] Channel Type: ${message.channel.type} (DM=${ChannelType.DM})`);
-    console.log(`[DEBUG] Attachments: ${message.attachments.size}`);
-
     if (message.author.bot) {
-        console.log('[DEBUG] Ignoring bot message');
         return;
     }
 
@@ -59,13 +54,11 @@ export const onMessageCreate = async (client: Client, message: Message) => {
     }
 
     if (message.channel.type !== ChannelType.DM) {
-        console.log(`[DEBUG] Ignoring non-DM message in channel type ${message.channel.type}`);
         return;
     }
 
     const userId = message.author.id;
     let userRecord = await VerificationModel.findOne({ userId });
-    console.log(`[DEBUG] User Record for ${userId}:`, userRecord ? 'Found' : 'Not Found');
 
     // GLOBAL ROLE SYNC: Always check if DB status matches Discord Role
     if (userRecord && userRecord.roleGiven) {
@@ -75,7 +68,6 @@ export const onMessageCreate = async (client: Client, message: Message) => {
                 const member = await guild.members.fetch(userId).catch(() => null);
                 // If member is missing (left guild) or missing role
                 if (!member || !member.roles.cache.has(CONFIG.ROLES.EARLY_SUPPORTER)) {
-                    console.log(`[DEBUG] Role Mismatch for ${userId}. Resetting verification.`);
                     userRecord.progress.youtube = false;
                     userRecord.progress.instagram = false;
                     userRecord.roleGiven = false;
@@ -93,9 +85,7 @@ export const onMessageCreate = async (client: Client, message: Message) => {
         }
     }
 
-    if (userRecord) {
-        console.log(`[DEBUG] Progress: YT=${userRecord.progress.youtube}, IG=${userRecord.progress.instagram}`);
-    }
+
 
     const content = message.content.toLowerCase().trim();
 
@@ -125,34 +115,25 @@ export const onMessageCreate = async (client: Client, message: Message) => {
 
     // Handle Screenshots (Prioritize this over Menu)
     if (message.attachments.size > 0) {
-        console.log(`[MessageCreate] Processing attachment for user ${userId}`);
         const attachment = message.attachments.first();
 
         if (!attachment) return;
-
-        console.log(`[DEBUG] Attachment ContentType: ${attachment.contentType}`);
-        console.log(`[DEBUG] Attachment Name: ${attachment.name}`);
 
         const isImage = attachment.contentType?.startsWith('image/') ||
             attachment.name?.match(/\.(jpg|jpeg|png|gif|webp)$/i);
 
         if (!isImage) {
-            console.log(`[MessageCreate] Attachment is not an image: ${attachment.contentType} / ${attachment.name}`);
             await message.reply('Please upload an image.');
             return;
         }
 
         // Ensure user record exists for image processing
         if (!userRecord) {
-            console.log(`[MessageCreate] Creating new user record for ${userId}`);
             userRecord = await VerificationModel.create({ userId });
         }
 
-        console.log(`[MessageCreate] User Record State: YT=${userRecord.progress.youtube}, IG=${userRecord.progress.instagram}`);
-
         // Check if they are in the verification flow
         if (!userRecord.progress.youtube || !userRecord.progress.instagram) {
-            console.log('[MessageCreate] User is in verification flow. Starting OCR process.');
             // ... (OCR Logic)
             let loadingMsg;
             try {
@@ -163,13 +144,10 @@ export const onMessageCreate = async (client: Client, message: Message) => {
             }
 
             try {
-                console.log(`[MessageCreate] Downloading image from ${attachment.url}`);
                 const imageResponse = await axios.get(attachment.url, { responseType: 'arraybuffer' });
                 const imageBuffer = Buffer.from(imageResponse.data, 'binary');
 
-                console.log('[MessageCreate] Performing OCR...');
                 const ocrResult = await performOCR(imageBuffer);
-                console.log('[MessageCreate] OCR Result:', JSON.stringify(ocrResult));
 
                 // Delete loading message
                 try { await loadingMsg.delete(); } catch (e) { /* ignore */ }
@@ -228,52 +206,59 @@ export const onMessageCreate = async (client: Client, message: Message) => {
 
                         await message.reply('<:tcet_tick:1437995479567962184> Instagram verified!');
 
-                        // Both verified, automatically give role
-                        try {
-                            const reviewChannel = await client.channels.fetch(CONFIG.CHANNELS.MANUAL_REVIEW) as TextChannel;
-                            if (reviewChannel) {
-                                const guild = reviewChannel.guild;
-                                const roleId = CONFIG.ROLES.EARLY_SUPPORTER;
+                        // Check if YouTube was also verified via OCR (not manual)
+                        if (userRecord.data.ocrYT?.valid) {
+                            // Both verified via OCR, automatically give role
+                            try {
+                                const reviewChannel = await client.channels.fetch(CONFIG.CHANNELS.MANUAL_REVIEW) as TextChannel;
+                                if (reviewChannel) {
+                                    const guild = reviewChannel.guild;
+                                    const roleId = CONFIG.ROLES.EARLY_SUPPORTER;
 
-                                // Check limit
-                                const currentCount = await getRoleMemberCount(guild, roleId);
-                                if (currentCount >= CONFIG.MAX_EARLY_SUPPORTERS) {
-                                    await message.reply(`❌ **Verification Failed**\nThe maximum limit of **${CONFIG.MAX_EARLY_SUPPORTERS}** Early Supporters has been reached.`);
-                                    return;
+                                    // Check limit
+                                    const currentCount = await getRoleMemberCount(guild, roleId);
+                                    if (currentCount >= CONFIG.MAX_EARLY_SUPPORTERS) {
+                                        await message.reply(`❌ **Verification Failed**\nThe maximum limit of **${CONFIG.MAX_EARLY_SUPPORTERS}** Early Supporters has been reached.`);
+                                        return;
+                                    }
+
+                                    const member = await guild.members.fetch(userId);
+                                    await member.roles.add(roleId);
+
+                                    userRecord.roleGiven = true;
+                                    userRecord.submittedForReview = false;
+                                    await userRecord.save();
+
+                                    // Delete ModMail thread if exists
+                                    await deleteModMailThread(client, userId);
+
+                                    const roleName = await getTargetRoleName(client);
+
+                                    await message.reply({
+                                        embeds: [new EmbedBuilder()
+                                            .setTitle('Verification Successful!')
+                                            .setDescription(`You have been verified and given the **${roleName}** role.`)
+                                            .setColor('#00ff00')
+                                        ]
+                                    });
+
+                                    // Log success
+                                    await sendVerificationLog(client, message.author, currentCount + 1);
+                                } else {
+                                    // Fallback if channel/guild not found (shouldn't happen if config is right)
+                                    console.error('Could not find guild to assign role.');
+                                    await message.reply('Verification complete, but could not assign role automatically. Please contact staff.');
                                 }
-
-                                const member = await guild.members.fetch(userId);
-                                await member.roles.add(roleId);
-
-                                userRecord.roleGiven = true;
-                                userRecord.submittedForReview = false;
-                                await userRecord.save();
-
-                                // Delete ModMail thread if exists
-                                await deleteModMailThread(client, userId);
-
-                                const roleName = await getTargetRoleName(client);
-
-                                await message.reply({
-                                    embeds: [new EmbedBuilder()
-                                        .setTitle('Verification Successful!')
-                                        .setDescription(`You have been verified and given the **${roleName}** role.`)
-                                        .setColor('#00ff00')
-                                    ]
-                                });
-
-                                // Log success
-                                await sendVerificationLog(client, message.author, currentCount + 1);
-                            } else {
-                                // Fallback if channel/guild not found (shouldn't happen if config is right)
-                                console.error('Could not find guild to assign role.');
-                                await message.reply('Verification complete, but could not assign role automatically. Please contact staff.');
+                            } catch (error) {
+                                console.error('Error auto-assigning role:', error);
+                                await message.reply('Verification complete, but an error occurred assigning the role. Staff have been notified.');
+                                // Maybe send to manual review as backup?
+                                await sendToManualReview(client, userRecord, message.author);
                             }
-                        } catch (error) {
-                            console.error('Error auto-assigning role:', error);
-                            await message.reply('Verification complete, but an error occurred assigning the role. Staff have been notified.');
-                            // Maybe send to manual review as backup?
+                        } else {
+                            // YouTube was manual. Send to manual review (again, with both proofs now)
                             await sendToManualReview(client, userRecord, message.author);
+                            await message.reply('📝 **Verification Pending**\nSince your YouTube screenshot required manual review, staff will check both and approve you shortly.');
                         }
                     } else {
                         const row = new ActionRowBuilder<ButtonBuilder>()
@@ -303,7 +288,6 @@ export const onMessageCreate = async (client: Client, message: Message) => {
                 await message.reply('<:tcet_cross:1437995480754946178> An error occurred while processing the image. Please try again.');
             }
         } else {
-            console.log('[MessageCreate] User appears to be already verified or in review. Forwarding to ModMail.');
             // Already verified or in review, but sent an image?
             // Maybe forward to modmail if they are verified?
             await message.reply('📨 **Forwarded to Support.**\nYou are already verified. Your message has been sent to our staff.');

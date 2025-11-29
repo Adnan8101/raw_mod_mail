@@ -46,12 +46,9 @@ const preprocessImage = async (buffer: Buffer): Promise<Buffer> => {
 
 export const performOCR = async (imageBuffer: Buffer) => {
     try {
-        console.log('[OCR] Starting Preprocessing...');
         const processedBuffer = await preprocessImage(imageBuffer);
-        console.log('[OCR] Preprocessing Complete.');
 
         // Use robust object format for Google Vision API
-        console.log('[OCR] Calling Google Vision API...');
         console.time('Google Vision API');
         const [result] = await client.textDetection({
             image: { content: processedBuffer }

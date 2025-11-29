@@ -1,4 +1,4 @@
-import { Client, TextChannel, Guild, User, EmbedBuilder } from 'discord.js';
+import { Client, TextChannel, Guild, User, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { CONFIG } from '../config';
 
 export const getTargetRoleName = async (client: Client): Promise<string> => {
@@ -57,7 +57,16 @@ export const sendVerificationLog = async (client: Client, user: User, count: num
             embed.setImage(imageURL);
         }
 
-        await logsChannel.send({ embeds: [embed] });
+        const row = new ActionRowBuilder<ButtonBuilder>()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`revoke_verification_${user.id}`)
+                    .setLabel('Revoke')
+                    .setStyle(ButtonStyle.Danger)
+                    .setEmoji('🗑️')
+            );
+
+        await logsChannel.send({ embeds: [embed], components: [row] });
     } catch (error) {
         console.error('Error sending verification log:', error);
     }
