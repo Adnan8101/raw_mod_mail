@@ -356,11 +356,11 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
                 });
 
             } else if (customId === 'request_manual_review_yt' || customId === 'request_manual_review_ig') {
-                await interaction.deferReply({ ephemeral: true });
+                await interaction.deferUpdate();
 
                 const userRecord = await VerificationModel.findOne({ userId });
                 if (!userRecord) {
-                    await interaction.editReply({ content: '❌ No verification record found. Please start over.' });
+                    await interaction.editReply({ content: '❌ No verification record found. Please start over.', components: [] });
                     return;
                 }
 
@@ -371,16 +371,15 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
                     userRecord.progress.instagram = true;
                 }
 
-                await interaction.editReply({ content: '📝 **Manual Review Requested.**\nOur staff will review your screenshot shortly.' });
+                let responseContent = '📝 **Manual Review Requested.**\nOur staff will review your screenshot shortly.';
 
                 // Always send to manual review channel so staff can see it
                 await sendToManualReview(client, userRecord, user);
 
-                if (!userRecord.progress.instagram && customId === 'request_manual_review_yt') {
-                    await user.send('Please now upload your **Instagram** screenshot.');
-                }
-
                 await userRecord.save();
+
+                // Remove buttons and show message
+                await interaction.editReply({ content: responseContent, components: [] });
             } else if (customId.startsWith('admin_approve_')) {
                 await interaction.deferReply({ ephemeral: false });
 
