@@ -82,50 +82,31 @@ export const onMessageCreate = async (client: Client, message: Message) => {
     }
 
     // Initial Start (or after Reset/Start command)
-    if (!userRecord || content === 'start') { // Show welcome embed if no record or if 'start' command is used
-        const roleName = await getTargetRoleName(client);
+    if (!userRecord || content === 'start') {
+        // If it's a "start" command or no record, show the MAIN MENU first
+        // unless they are already verified? No, let them see the menu.
 
         const embed = new EmbedBuilder()
-            .setTitle('Early Supporter Verification')
-            .setDescription(`Welcome! Follow the steps to get **${roleName}**.\nMake sure each screenshot contains a **visible timestamp**.\nYou must subscribe & follow the official accounts.`)
-            .addFields(
-                { name: '1. Subscribe YouTube', value: 'Click the button below' },
-                { name: '2. Follow Instagram', value: 'Click the button below' }
-            )
+            .setTitle('Welcome to Raw ModMail')
+            .setDescription('We are here to help you. Please choose an option below to proceed.\n\n**Apply for Early Supporter**: Get verified and earn the role.\n**Open Ticket**: Contact the support team for assistance.')
+            .setThumbnail(client.user?.displayAvatarURL() || '')
             .setColor('#0099ff');
 
         const row = new ActionRowBuilder<ButtonBuilder>()
             .addComponents(
                 new ButtonBuilder()
-                    .setLabel('Subscribe YouTube')
-                    .setStyle(ButtonStyle.Link)
-                    .setURL('https://www.youtube.com/@rashikasartwork'),
-                new ButtonBuilder()
-                    .setLabel('Follow Instagram')
-                    .setStyle(ButtonStyle.Link)
-                    .setURL('https://www.instagram.com/rashika.agarwal.79/')
-            );
-
-        const row2 = new ActionRowBuilder<ButtonBuilder>()
-            .addComponents(
-                new ButtonBuilder()
-                    .setCustomId('start_verification')
-                    .setLabel('Start')
+                    .setCustomId('start_verification_flow')
+                    .setLabel('Apply for Early Supporter')
                     .setStyle(ButtonStyle.Primary)
-                    .setEmoji('▶️'),
+                    .setEmoji('🚀'),
                 new ButtonBuilder()
-                    .setCustomId('restart_verification')
-                    .setLabel('Restart')
+                    .setCustomId('open_ticket')
+                    .setLabel('Open Ticket')
                     .setStyle(ButtonStyle.Secondary)
-                    .setEmoji('🔄'),
-                new ButtonBuilder()
-                    .setCustomId('reset_verification')
-                    .setLabel('Reset')
-                    .setStyle(ButtonStyle.Danger)
-                    .setEmoji('🔴')
+                    .setEmoji('📩')
             );
 
-        await message.channel.send({ embeds: [embed], components: [row, row2] });
+        await message.channel.send({ embeds: [embed], components: [row] });
 
         // Create record if it doesn't exist (it won't if we are here)
         if (!await VerificationModel.findOne({ userId })) {
@@ -142,144 +123,152 @@ export const onMessageCreate = async (client: Client, message: Message) => {
             return;
         }
 
-        const imageResponse = await axios.get(attachment.url, { responseType: 'arraybuffer' });
-        const imageBuffer = Buffer.from(imageResponse.data, 'binary');
+        // Check if they are in the verification flow
+        if (!userRecord.progress.youtube || !userRecord.progress.instagram) {
+            // ... (OCR Logic - kept same, just indented)
+            const imageResponse = await axios.get(attachment.url, { responseType: 'arraybuffer' });
+            const imageBuffer = Buffer.from(imageResponse.data, 'binary');
 
-        const loadingMsg = await message.reply('<a:loading:1444273220823027792> Processing image with OCR...');
+            const loadingMsg = await message.reply('<a:loading:1444273220823027792> Processing image with OCR...');
 
-        try {
-            const ocrResult = await performOCR(imageBuffer);
+            try {
+                const ocrResult = await performOCR(imageBuffer);
 
-            // Delete loading message
-            try { await loadingMsg.delete(); } catch (e) { /* ignore */ }
+                // Delete loading message
+                try { await loadingMsg.delete(); } catch (e) { /* ignore */ }
 
-            // Determine which step we are on
-            if (!userRecord.progress.youtube) {
-                // Validate YouTube
-                const validation = validateYouTubeScreenshot(ocrResult);
+                // Determine which step we are on
+                if (!userRecord.progress.youtube) {
+                    // Validate YouTube
+                    const validation = validateYouTubeScreenshot(ocrResult);
 
-                if (validation.valid) {
-                    userRecord.progress.youtube = true;
-                    userRecord.data.youtubeScreenshot = attachment.url;
-                    userRecord.data.ocrYT = { ...ocrResult, ...validation };
-                    await userRecord.save();
+                    if (validation.valid) {
+                        userRecord.progress.youtube = true;
+                        userRecord.data.youtubeScreenshot = attachment.url;
+                        userRecord.data.ocrYT = { ...ocrResult, ...validation };
+                        await userRecord.save();
 
-                    const row = new ActionRowBuilder<ButtonBuilder>()
-                        .addComponents(
-                            new ButtonBuilder()
-                                .setLabel('Follow Instagram')
-                                .setStyle(ButtonStyle.Link)
-                                .setURL('https://www.instagram.com/rashika.agarwal.79/')
-                        );
+                        const row = new ActionRowBuilder<ButtonBuilder>()
+                            .addComponents(
+                                new ButtonBuilder()
+                                    .setLabel('Follow Instagram')
+                                    .setStyle(ButtonStyle.Link)
+                                    .setURL('https://www.instagram.com/rashika.agarwal.79/')
+                            );
 
-                    await message.reply({
-                        content: '<:tcet_tick:1437995479567962184> YouTube verified!\nNow send your Instagram screenshot.',
-                        components: [row]
-                    });
-                } else {
-                    const row = new ActionRowBuilder<ButtonBuilder>()
-                        .addComponents(
-                            new ButtonBuilder()
-                                .setCustomId('request_manual_review_yt')
-                                .setLabel('Request Manual Review')
-                                .setStyle(ButtonStyle.Secondary)
-                                .setEmoji('📝')
-                        );
+                        await message.reply({
+                            content: '<:tcet_tick:1437995479567962184> YouTube verified!\nNow send your Instagram screenshot.',
+                            components: [row]
+                        });
+                    } else {
+                        const row = new ActionRowBuilder<ButtonBuilder>()
+                            .addComponents(
+                                new ButtonBuilder()
+                                    .setCustomId('request_manual_review_yt')
+                                    .setLabel('Request Manual Review')
+                                    .setStyle(ButtonStyle.Secondary)
+                                    .setEmoji('📝')
+                            );
 
-                    // Save the screenshot URL temporarily so we can use it if they request manual review
-                    userRecord.data.youtubeScreenshot = attachment.url;
-                    await userRecord.save();
+                        // Save the screenshot URL temporarily so we can use it if they request manual review
+                        userRecord.data.youtubeScreenshot = attachment.url;
+                        await userRecord.save();
 
-                    await message.reply({
-                        content: `<:tcet_cross:1437995480754946178> **Screenshot failed OCR check.**\nReason: ${validation.error}\nMake sure timestamp is visible & account is clearly shown.`,
-                        components: [row]
-                    });
-                }
-            } else if (!userRecord.progress.instagram) {
-                // Validate Instagram
-                const validation = validateInstagramScreenshot(ocrResult);
+                        await message.reply({
+                            content: `<:tcet_cross:1437995480754946178> **Screenshot failed OCR check.**\nReason: ${validation.error}\nMake sure timestamp is visible & account is clearly shown.`,
+                            components: [row]
+                        });
+                    }
+                } else if (!userRecord.progress.instagram) {
+                    // Validate Instagram
+                    const validation = validateInstagramScreenshot(ocrResult);
 
-                if (validation.valid) {
-                    userRecord.progress.instagram = true;
-                    userRecord.data.instagramScreenshot = attachment.url;
-                    userRecord.data.ocrIG = { ...ocrResult, ...validation };
-                    await userRecord.save();
+                    if (validation.valid) {
+                        userRecord.progress.instagram = true;
+                        userRecord.data.instagramScreenshot = attachment.url;
+                        userRecord.data.ocrIG = { ...ocrResult, ...validation };
+                        await userRecord.save();
 
-                    await message.reply('<:tcet_tick:1437995479567962184> Instagram verified!');
+                        await message.reply('<:tcet_tick:1437995479567962184> Instagram verified!');
 
-                    // Both verified, automatically give role
-                    try {
-                        const reviewChannel = await client.channels.fetch(CONFIG.CHANNELS.MANUAL_REVIEW) as TextChannel;
-                        if (reviewChannel) {
-                            const guild = reviewChannel.guild;
-                            const roleId = CONFIG.ROLES.EARLY_SUPPORTER;
+                        // Both verified, automatically give role
+                        try {
+                            const reviewChannel = await client.channels.fetch(CONFIG.CHANNELS.MANUAL_REVIEW) as TextChannel;
+                            if (reviewChannel) {
+                                const guild = reviewChannel.guild;
+                                const roleId = CONFIG.ROLES.EARLY_SUPPORTER;
 
-                            // Check limit
-                            const currentCount = await getRoleMemberCount(guild, roleId);
-                            if (currentCount >= CONFIG.MAX_EARLY_SUPPORTERS) {
-                                await message.reply(`❌ **Verification Failed**\nThe maximum limit of **${CONFIG.MAX_EARLY_SUPPORTERS}** Early Supporters has been reached.`);
-                                return;
+                                // Check limit
+                                const currentCount = await getRoleMemberCount(guild, roleId);
+                                if (currentCount >= CONFIG.MAX_EARLY_SUPPORTERS) {
+                                    await message.reply(`❌ **Verification Failed**\nThe maximum limit of **${CONFIG.MAX_EARLY_SUPPORTERS}** Early Supporters has been reached.`);
+                                    return;
+                                }
+
+                                const member = await guild.members.fetch(userId);
+                                await member.roles.add(roleId);
+
+                                userRecord.roleGiven = true;
+                                userRecord.submittedForReview = false;
+                                await userRecord.save();
+
+                                // Delete ModMail thread if exists
+                                await deleteModMailThread(client, userId);
+
+                                const roleName = await getTargetRoleName(client);
+
+                                await message.reply({
+                                    embeds: [new EmbedBuilder()
+                                        .setTitle('Verification Successful!')
+                                        .setDescription(`You have been verified and given the **${roleName}** role.`)
+                                        .setColor('#00ff00')
+                                    ]
+                                });
+
+                                // Log success
+                                await sendVerificationLog(client, message.author, currentCount + 1);
+                            } else {
+                                // Fallback if channel/guild not found (shouldn't happen if config is right)
+                                console.error('Could not find guild to assign role.');
+                                await message.reply('Verification complete, but could not assign role automatically. Please contact staff.');
                             }
-
-                            const member = await guild.members.fetch(userId);
-                            await member.roles.add(roleId);
-
-                            userRecord.roleGiven = true;
-                            userRecord.submittedForReview = false;
-                            await userRecord.save();
-
-                            // Delete ModMail thread if exists
-                            await deleteModMailThread(client, userId);
-
-                            const roleName = await getTargetRoleName(client);
-
-                            await message.reply({
-                                embeds: [new EmbedBuilder()
-                                    .setTitle('Verification Successful!')
-                                    .setDescription(`You have been verified and given the **${roleName}** role.`)
-                                    .setColor('#00ff00')
-                                ]
-                            });
-
-                            // Log success
-                            await sendVerificationLog(client, message.author, currentCount + 1);
-                        } else {
-                            // Fallback if channel/guild not found (shouldn't happen if config is right)
-                            console.error('Could not find guild to assign role.');
-                            await message.reply('Verification complete, but could not assign role automatically. Please contact staff.');
+                        } catch (error) {
+                            console.error('Error auto-assigning role:', error);
+                            await message.reply('Verification complete, but an error occurred assigning the role. Staff have been notified.');
+                            // Maybe send to manual review as backup?
+                            await sendToManualReview(client, userRecord, message.author);
                         }
-                    } catch (error) {
-                        console.error('Error auto-assigning role:', error);
-                        await message.reply('Verification complete, but an error occurred assigning the role. Staff have been notified.');
-                        // Maybe send to manual review as backup?
-                        await sendToManualReview(client, userRecord, message.author);
+                    } else {
+                        const row = new ActionRowBuilder<ButtonBuilder>()
+                            .addComponents(
+                                new ButtonBuilder()
+                                    .setCustomId('request_manual_review_ig')
+                                    .setLabel('Request Manual Review')
+                                    .setStyle(ButtonStyle.Secondary)
+                                    .setEmoji('📝')
+                            );
+
+                        // Save the screenshot URL temporarily
+                        userRecord.data.instagramScreenshot = attachment.url;
+                        await userRecord.save();
+
+                        await message.reply({
+                            content: `<:tcet_cross:1437995480754946178> **Screenshot failed OCR check.**\nReason: ${validation.error}\nMake sure timestamp is visible & account is clearly shown.`,
+                            components: [row]
+                        });
                     }
                 } else {
-                    const row = new ActionRowBuilder<ButtonBuilder>()
-                        .addComponents(
-                            new ButtonBuilder()
-                                .setCustomId('request_manual_review_ig')
-                                .setLabel('Request Manual Review')
-                                .setStyle(ButtonStyle.Secondary)
-                                .setEmoji('📝')
-                        );
-
-                    // Save the screenshot URL temporarily
-                    userRecord.data.instagramScreenshot = attachment.url;
-                    await userRecord.save();
-
-                    await message.reply({
-                        content: `<:tcet_cross:1437995480754946178> **Screenshot failed OCR check.**\nReason: ${validation.error}\nMake sure timestamp is visible & account is clearly shown.`,
-                        components: [row]
-                    });
+                    await message.reply('You have already submitted both screenshots. Please wait for manual review.');
                 }
-            } else {
-                await message.reply('You have already submitted both screenshots. Please wait for manual review.');
+            } catch (error) {
+                console.error('OCR Processing Error:', error);
+                try { await loadingMsg.delete(); } catch (e) { /* ignore */ }
+                await message.reply('<:tcet_cross:1437995480754946178> An error occurred while processing the image. Please try again.');
             }
-        } catch (error) {
-            console.error('OCR Processing Error:', error);
-            try { await loadingMsg.delete(); } catch (e) { /* ignore */ }
-            await message.reply('<:tcet_cross:1437995480754946178> An error occurred while processing the image. Please try again.');
+        } else {
+            // Already verified or in review, but sent an image?
+            // Maybe forward to modmail if they are verified?
+            await forwardToModMail(client, message, userId);
         }
     } else {
         // Handle text messages (ModMail)

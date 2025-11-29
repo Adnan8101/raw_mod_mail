@@ -10,7 +10,84 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
     const { customId, user } = interaction;
     const userId = user.id;
 
-    if (customId === 'start_verification') {
+    if (customId === 'start_verification_flow') {
+        let userRecord = await VerificationModel.findOne({ userId });
+        if (!userRecord) {
+            userRecord = await VerificationModel.create({ userId });
+        }
+
+        // Check if already verified
+        if (userRecord.roleGiven) {
+            await interaction.reply({ content: '✅ You are already verified as an Early Supporter.', ephemeral: true });
+            return;
+        }
+
+        const roleName = await getTargetRoleName(client);
+
+        const embed = new EmbedBuilder()
+            .setTitle('Early Supporter Verification')
+            .setDescription(`Welcome! Follow the steps to get **${roleName}**.\nMake sure each screenshot contains a **visible timestamp**.\nYou must subscribe & follow the official accounts.`)
+            .addFields(
+                { name: '1. Subscribe YouTube', value: 'Click the button below' },
+                { name: '2. Follow Instagram', value: 'Click the button below' }
+            )
+            .setColor('#0099ff');
+
+        const row = new ActionRowBuilder<ButtonBuilder>()
+            .addComponents(
+                new ButtonBuilder()
+                    .setLabel('Subscribe YouTube')
+                    .setStyle(ButtonStyle.Link)
+                    .setURL('https://www.youtube.com/@rashikasartwork'),
+                new ButtonBuilder()
+                    .setLabel('Follow Instagram')
+                    .setStyle(ButtonStyle.Link)
+                    .setURL('https://www.instagram.com/rashika.agarwal.79/')
+            );
+
+        const row2 = new ActionRowBuilder<ButtonBuilder>()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('start_verification')
+                    .setLabel('Start')
+                    .setStyle(ButtonStyle.Primary)
+                    .setEmoji('▶️'),
+                new ButtonBuilder()
+                    .setCustomId('restart_verification')
+                    .setLabel('Restart')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('🔄'),
+                new ButtonBuilder()
+                    .setCustomId('reset_verification')
+                    .setLabel('Reset')
+                    .setStyle(ButtonStyle.Danger)
+                    .setEmoji('🔴')
+            );
+
+        await interaction.reply({ embeds: [embed], components: [row, row2], ephemeral: true });
+
+    } else if (customId === 'open_ticket') {
+        // Create ModMail thread if not exists
+        const logsChannel = await client.channels.fetch(CONFIG.CHANNELS.LOGS) as TextChannel;
+        if (logsChannel) {
+            const activeThreads = await logsChannel.threads.fetchActive();
+            let thread = activeThreads.threads.find(t => t.name.endsWith(userId));
+
+            if (!thread) {
+                thread = await logsChannel.threads.create({
+                    name: `ModMail - ${user.username} - ${userId}`,
+                    autoArchiveDuration: 1440,
+                    reason: 'New ModMail thread via Button'
+                });
+                await thread.send(`**ModMail Thread Started**\nUser: **${user.username}** (\`${userId}\`)\n\nUser opened a ticket via the menu.`);
+            }
+
+            await interaction.reply({ content: '✅ **Ticket Created.**\nPlease type your message here to send it to our support team.', ephemeral: true });
+        } else {
+            await interaction.reply({ content: '❌ Error creating ticket. Please contact staff directly.', ephemeral: true });
+        }
+
+    } else if (customId === 'start_verification') {
         // Just show the steps again or check status
         let userRecord = await VerificationModel.findOne({ userId });
         if (!userRecord) {
@@ -21,7 +98,7 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
 
         const embed = new EmbedBuilder()
             .setTitle('Early Supporter Verification')
-            .setDescription(`Welcome! Follow the steps to get ** ${roleName}**.\nMake sure each screenshot contains a ** visible timestamp **.\nYou must subscribe & follow the official accounts.`)
+            .setDescription(`Welcome! Follow the steps to get **${roleName}**.\nMake sure each screenshot contains a **visible timestamp**.\nYou must subscribe & follow the official accounts.`)
             .addFields(
                 { name: '1. Subscribe YouTube', value: '[Link](https://www.youtube.com/@rashikasartwork)' },
                 { name: '2. Follow Instagram', value: '[Link](https://www.instagram.com/rashika.agarwal.79/)' }
@@ -51,7 +128,7 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
 
         const embed = new EmbedBuilder()
             .setTitle('Early Supporter Verification')
-            .setDescription(`Welcome! Follow the steps to get ** ${roleName}**.\nMake sure each screenshot contains a ** visible timestamp **.\nYou must subscribe & follow the official accounts.`)
+            .setDescription(`Welcome! Follow the steps to get **${roleName}**.\nMake sure each screenshot contains a **visible timestamp**.\nYou must subscribe & follow the official accounts.`)
             .addFields(
                 { name: '1. Subscribe YouTube', value: '[Link](https://www.youtube.com/@rashikasartwork)' },
                 { name: '2. Follow Instagram', value: '[Link](https://www.instagram.com/rashika.agarwal.79/)' }
@@ -130,6 +207,12 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
             return;
         }
 
+        // Check if already verified
+        if (userRecord.roleGiven) {
+            await interaction.reply({ content: '⚠️ **User is already verified.**', ephemeral: false });
+            return;
+        }
+
         try {
             const guild = interaction.guild;
             if (!guild) return;
@@ -157,13 +240,13 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
 
             await member.send({
                 embeds: [new EmbedBuilder()
-                    .setTitle(' Verification Successful!')
-                    .setDescription(`You have been verified and given the ** ${roleName}** role.`)
+                    .setTitle('Verification Successful!')
+                    .setDescription(`You have been verified and given the **${roleName}** role.`)
                     .setColor('#00ff00')
                 ]
             });
 
-            await interaction.reply({ content: `✅ ** Approved ** by < @${user.id}>.Role assigned.`, ephemeral: false });
+            await interaction.reply({ content: `✅ **Approved** by <@${user.id}>. Role assigned.`, ephemeral: false });
 
             // Log success
             await sendVerificationLog(client, member.user, currentCount + 1);
@@ -205,7 +288,7 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
             console.log('Could not DM user');
         }
 
-        await interaction.reply({ content: `❌ ** Rejected ** by < @${user.id}>.User notified.`, ephemeral: false });
+        await interaction.reply({ content: `❌ **Rejected** by <@${user.id}>. User notified.`, ephemeral: false });
 
         // Disable buttons
         const message = interaction.message;
@@ -236,7 +319,7 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
                 }
 
                 await interaction.reply({
-                    content: `✅ ** Chat Thread Ready:** <#${thread.id}> \nYou can chat with the user there.`,
+                    content: `✅ **Chat Thread Ready:** <#${thread.id}> \nYou can chat with the user there.`,
                     ephemeral: true
                 });
             } else {
