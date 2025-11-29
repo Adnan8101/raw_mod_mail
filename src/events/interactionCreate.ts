@@ -2,7 +2,7 @@ import { Client, Interaction, EmbedBuilder, ActionRowBuilder, ButtonBuilder, But
 import { VerificationModel } from '../database/schema';
 import { CONFIG } from '../config';
 import { sendToManualReview } from './messageCreate';
-import { getTargetRoleName, deleteModMailThread } from '../utils/discord';
+import { getTargetRoleName, deleteModMailThread, getRoleMemberCount, sendVerificationLog } from '../utils/discord';
 
 export const onInteractionCreate = async (client: Client, interaction: Interaction) => {
     if (!interaction.isButton()) return;
@@ -134,9 +134,16 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
             const guild = interaction.guild;
             if (!guild) return;
 
-            const member = await guild.members.fetch(targetUserId);
             const roleId = CONFIG.ROLES.EARLY_SUPPORTER;
 
+            // Check limit
+            const currentCount = await getRoleMemberCount(guild, roleId);
+            if (currentCount >= CONFIG.MAX_EARLY_SUPPORTERS) {
+                await interaction.reply({ content: `❌ **Verification Failed**\nThe maximum limit of **${CONFIG.MAX_EARLY_SUPPORTERS}** Early Supporters has been reached.`, ephemeral: false });
+                return;
+            }
+
+            const member = await guild.members.fetch(targetUserId);
             await member.roles.add(roleId);
 
             userRecord.roleGiven = true;
@@ -157,6 +164,9 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
             });
 
             await interaction.reply({ content: `✅ ** Approved ** by < @${user.id}>.Role assigned.`, ephemeral: false });
+
+            // Log success
+            await sendVerificationLog(client, member.user, currentCount + 1);
 
             // Disable buttons on the original message
             const message = interaction.message;

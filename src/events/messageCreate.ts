@@ -4,7 +4,7 @@ import { performOCR } from '../services/ocr';
 import { validateYouTubeScreenshot, validateInstagramScreenshot } from '../services/verification';
 import { CONFIG } from '../config';
 import axios from 'axios';
-import { getTargetRoleName, deleteModMailThread } from '../utils/discord';
+import { getTargetRoleName, deleteModMailThread, getRoleMemberCount, sendVerificationLog } from '../utils/discord';
 
 export const onMessageCreate = async (client: Client, message: Message) => {
     if (message.author.bot) return;
@@ -212,9 +212,16 @@ export const onMessageCreate = async (client: Client, message: Message) => {
                         const reviewChannel = await client.channels.fetch(CONFIG.CHANNELS.MANUAL_REVIEW) as TextChannel;
                         if (reviewChannel) {
                             const guild = reviewChannel.guild;
-                            const member = await guild.members.fetch(userId);
                             const roleId = CONFIG.ROLES.EARLY_SUPPORTER;
 
+                            // Check limit
+                            const currentCount = await getRoleMemberCount(guild, roleId);
+                            if (currentCount >= CONFIG.MAX_EARLY_SUPPORTERS) {
+                                await message.reply(`❌ **Verification Failed**\nThe maximum limit of **${CONFIG.MAX_EARLY_SUPPORTERS}** Early Supporters has been reached.`);
+                                return;
+                            }
+
+                            const member = await guild.members.fetch(userId);
                             await member.roles.add(roleId);
 
                             userRecord.roleGiven = true;
@@ -233,6 +240,9 @@ export const onMessageCreate = async (client: Client, message: Message) => {
                                     .setColor('#00ff00')
                                 ]
                             });
+
+                            // Log success
+                            await sendVerificationLog(client, message.author, currentCount + 1);
                         } else {
                             // Fallback if channel/guild not found (shouldn't happen if config is right)
                             console.error('Could not find guild to assign role.');
