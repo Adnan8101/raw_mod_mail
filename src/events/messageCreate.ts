@@ -7,6 +7,8 @@ import axios from 'axios';
 import { getTargetRoleName, deleteModMailThread, getRoleMemberCount, sendVerificationLog } from '../utils/discord';
 
 export const onMessageCreate = async (client: Client, message: Message) => {
+    console.log(`[MessageCreate] Received message from ${message.author.tag} (${message.author.id}) in channel type ${message.channel.type}`);
+
     if (message.author.bot) return;
 
     // Handle Admin Replies (Guild -> DM)
@@ -51,7 +53,10 @@ export const onMessageCreate = async (client: Client, message: Message) => {
         }
     }
 
-    if (message.channel.type !== ChannelType.DM) return;
+    if (message.channel.type !== ChannelType.DM) {
+        // console.log(`[MessageCreate] Ignoring non-DM message in channel type ${message.channel.type}`);
+        return;
+    }
 
     const userId = message.author.id;
     let userRecord = await VerificationModel.findOne({ userId });
@@ -83,8 +88,16 @@ export const onMessageCreate = async (client: Client, message: Message) => {
 
     // Handle Screenshots (Prioritize this over Menu)
     if (message.attachments.size > 0) {
+        console.log(`[MessageCreate] Processing attachment for user ${userId}`);
         const attachment = message.attachments.first();
-        if (!attachment?.contentType?.startsWith('image/')) {
+
+        if (!attachment) return;
+
+        const isImage = attachment.contentType?.startsWith('image/') ||
+            attachment.name?.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+
+        if (!isImage) {
+            console.log(`[MessageCreate] Attachment is not an image: ${attachment.contentType} / ${attachment.name}`);
             await message.reply('Please upload an image.');
             return;
         }
