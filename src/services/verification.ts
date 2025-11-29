@@ -87,29 +87,38 @@ export const validateInstagramScreenshot = (ocrResult: OCRResult): ValidationRes
 };
 
 const isTimeValid = (timeStr: string): boolean => {
-    const now = moment();
+    // Check against System Time (UTC on VPS)
+    if (checkTimeMatch(timeStr, moment())) return true;
 
+    // Check against IST (UTC + 5:30)
+    // We clone moment() just to be safe, though moment() creates a new instance anyway.
+    if (checkTimeMatch(timeStr, moment().add(5, 'hours').add(30, 'minutes'))) return true;
+
+    return false;
+};
+
+const checkTimeMatch = (timeStr: string, referenceTime: moment.Moment): boolean => {
     // Try parsing as is (24h or AM)
     const detected = moment(timeStr, 'HH:mm');
     detected.set({
-        year: now.year(),
-        month: now.month(),
-        date: now.date()
+        year: referenceTime.year(),
+        month: referenceTime.month(),
+        date: referenceTime.date()
     });
 
     // Check direct match (e.g. 16:07 vs 16:07 or 04:07 vs 04:07)
-    if (Math.abs(now.diff(detected, 'minutes')) <= 5) return true;
+    if (Math.abs(referenceTime.diff(detected, 'minutes')) <= 5) return true;
 
     // Check 12-hour offset (e.g. 04:07 vs 16:07)
     // If detected is < 12:00, try adding 12 hours
     if (detected.hours() < 12) {
-        detected.add(12, 'hours');
-        if (Math.abs(now.diff(detected, 'minutes')) <= 5) return true;
+        const detectedPM = detected.clone().add(12, 'hours');
+        if (Math.abs(referenceTime.diff(detectedPM, 'minutes')) <= 5) return true;
     }
     // If detected is > 12:00, try subtracting 12 hours (unlikely for "4:07" but good for completeness)
     else {
-        detected.subtract(12, 'hours');
-        if (Math.abs(now.diff(detected, 'minutes')) <= 5) return true;
+        const detectedAM = detected.clone().subtract(12, 'hours');
+        if (Math.abs(referenceTime.diff(detectedAM, 'minutes')) <= 5) return true;
     }
 
     return false;
