@@ -1,5 +1,5 @@
 import vision from '@google-cloud/vision';
-import { Jimp } from 'jimp'; // Correct named import for this version
+import sharp from 'sharp';
 import { CONFIG } from '../config';
 
 // Initialize the client with credentials from env
@@ -13,29 +13,31 @@ const client = new vision.ImageAnnotatorClient({
 
 const preprocessImage = async (buffer: Buffer): Promise<Buffer> => {
     try {
-        const image = await Jimp.read(buffer);
+        console.time('Sharp Process');
+        const image = sharp(buffer);
 
         // Preprocessing steps:
-        // 0. Auto-rotate based on EXIF
-        image.rotate(0);
-
         // 1. Resize if too small (upscale for better text recognition)
-        if (image.bitmap.width < 1000) {
-            image.resize({ w: 1000 });
+        const metadata = await image.metadata();
+        if (metadata.width && metadata.width < 1000) {
+            image.resize({ width: 1000 });
         }
 
         // 2. Enhance image for OCR
-        image.greyscale();
-        image.contrast(0.3); // Increased contrast
-        image.normalize();   // Normalize to stretch histogram
+        // Sharp doesn't have direct 'contrast' method like Jimp, but we can use linear or modulate
+        // modulate: brightness, saturation, hue, lightness
+        // linear: a * input + b
+        // To increase contrast: linear(a > 1)
 
-        // Use getBuffer with callback wrapped in Promise as getBufferAsync is not available in types
-        return await new Promise((resolve, reject) => {
-            image.getBuffer("image/png", (err: Error, buffer: Buffer) => {
-                if (err) reject(err);
-                else resolve(buffer);
-            });
-        });
+        image
+            .grayscale() // Convert to grayscale
+            .linear(1.2, -20) // Increase contrast (slope 1.2, offset -20)
+            .normalize(); // Normalize to stretch histogram
+
+        const resultBuffer = await image.png().toBuffer();
+        console.timeEnd('Sharp Process');
+
+        return resultBuffer;
     } catch (error) {
         console.error('⚠️ Image preprocessing failed, using original image:', error);
         return buffer;
@@ -44,12 +46,17 @@ const preprocessImage = async (buffer: Buffer): Promise<Buffer> => {
 
 export const performOCR = async (imageBuffer: Buffer) => {
     try {
+        console.log('[OCR] Starting Preprocessing...');
         const processedBuffer = await preprocessImage(imageBuffer);
+        console.log('[OCR] Preprocessing Complete.');
 
         // Use robust object format for Google Vision API
+        console.log('[OCR] Calling Google Vision API...');
+        console.time('Google Vision API');
         const [result] = await client.textDetection({
             image: { content: processedBuffer }
         });
+        console.timeEnd('Google Vision API');
 
         const detections = result.textAnnotations;
 

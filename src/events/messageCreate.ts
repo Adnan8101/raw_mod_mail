@@ -1,15 +1,20 @@
 import { Client, Message, EmbedBuilder, TextChannel, AttachmentBuilder, Partials, ChannelType, ActionRowBuilder, ButtonBuilder, ButtonStyle, ThreadChannel } from 'discord.js';
 import { VerificationModel } from '../database/schema';
 import { performOCR } from '../services/ocr';
-import { validateYouTubeScreenshot, validateInstagramScreenshot } from '../services/verification';
+import { validateYouTubeScreenshot, validateInstagramScreenshot, detectPlatform } from '../services/verification';
 import { CONFIG } from '../config';
 import axios from 'axios';
 import { getTargetRoleName, deleteModMailThread, getRoleMemberCount, sendVerificationLog } from '../utils/discord';
 
 export const onMessageCreate = async (client: Client, message: Message) => {
-    console.log(`[MessageCreate] Received message from ${message.author.tag} (${message.author.id}) in channel type ${message.channel.type}`);
+    console.log(`[DEBUG] Message received: ${message.id} from ${message.author.tag}`);
+    console.log(`[DEBUG] Channel Type: ${message.channel.type} (DM=${ChannelType.DM})`);
+    console.log(`[DEBUG] Attachments: ${message.attachments.size}`);
 
-    if (message.author.bot) return;
+    if (message.author.bot) {
+        console.log('[DEBUG] Ignoring bot message');
+        return;
+    }
 
     // Handle Admin Replies (Guild -> DM)
     if (message.channel.type === ChannelType.PublicThread || message.channel.type === ChannelType.PrivateThread) {
@@ -54,12 +59,44 @@ export const onMessageCreate = async (client: Client, message: Message) => {
     }
 
     if (message.channel.type !== ChannelType.DM) {
-        // console.log(`[MessageCreate] Ignoring non-DM message in channel type ${message.channel.type}`);
+        console.log(`[DEBUG] Ignoring non-DM message in channel type ${message.channel.type}`);
         return;
     }
 
     const userId = message.author.id;
     let userRecord = await VerificationModel.findOne({ userId });
+    console.log(`[DEBUG] User Record for ${userId}:`, userRecord ? 'Found' : 'Not Found');
+
+    // GLOBAL ROLE SYNC: Always check if DB status matches Discord Role
+    if (userRecord && userRecord.roleGiven) {
+        try {
+            const guild = await client.guilds.fetch(CONFIG.GUILD_ID).catch(() => null);
+            if (guild) {
+                const member = await guild.members.fetch(userId).catch(() => null);
+                // If member is missing (left guild) or missing role
+                if (!member || !member.roles.cache.has(CONFIG.ROLES.EARLY_SUPPORTER)) {
+                    console.log(`[DEBUG] Role Mismatch for ${userId}. Resetting verification.`);
+                    userRecord.progress.youtube = false;
+                    userRecord.progress.instagram = false;
+                    userRecord.roleGiven = false;
+                    userRecord.submittedForReview = false;
+                    // Keep the data/screenshots? Maybe clear them to force fresh start?
+                    // Let's clear them to be safe and avoid stale data issues.
+                    userRecord.data = { youtubeScreenshot: null, instagramScreenshot: null, ocrYT: null, ocrIG: null };
+                    await userRecord.save();
+
+                    await message.reply('⚠️ **Verification Status Updated**\nWe detected that you no longer have the **Early Supporter** role. Your verification progress has been reset so you can apply again.');
+                }
+            }
+        } catch (e) {
+            console.error('[DEBUG] Error syncing role:', e);
+        }
+    }
+
+    if (userRecord) {
+        console.log(`[DEBUG] Progress: YT=${userRecord.progress.youtube}, IG=${userRecord.progress.instagram}`);
+    }
+
     const content = message.content.toLowerCase().trim();
 
     // Handle Text Commands
@@ -92,6 +129,9 @@ export const onMessageCreate = async (client: Client, message: Message) => {
         const attachment = message.attachments.first();
 
         if (!attachment) return;
+
+        console.log(`[DEBUG] Attachment ContentType: ${attachment.contentType}`);
+        console.log(`[DEBUG] Attachment Name: ${attachment.name}`);
 
         const isImage = attachment.contentType?.startsWith('image/') ||
             attachment.name?.match(/\.(jpg|jpeg|png|gif|webp)$/i);
@@ -266,6 +306,7 @@ export const onMessageCreate = async (client: Client, message: Message) => {
             console.log('[MessageCreate] User appears to be already verified or in review. Forwarding to ModMail.');
             // Already verified or in review, but sent an image?
             // Maybe forward to modmail if they are verified?
+            await message.reply('📨 **Forwarded to Support.**\nYou are already verified. Your message has been sent to our staff.');
             await forwardToModMail(client, message, userId);
         }
         return; // Stop processing after handling attachment
