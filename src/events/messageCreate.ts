@@ -104,19 +104,32 @@ export const onMessageCreate = async (client: Client, message: Message) => {
 
         // Ensure user record exists for image processing
         if (!userRecord) {
+            console.log(`[MessageCreate] Creating new user record for ${userId}`);
             userRecord = await VerificationModel.create({ userId });
         }
 
+        console.log(`[MessageCreate] User Record State: YT=${userRecord.progress.youtube}, IG=${userRecord.progress.instagram}`);
+
         // Check if they are in the verification flow
         if (!userRecord.progress.youtube || !userRecord.progress.instagram) {
+            console.log('[MessageCreate] User is in verification flow. Starting OCR process.');
             // ... (OCR Logic)
-            const loadingMsg = await message.reply('<a:loading:1444273220823027792> Processing image with OCR...');
+            let loadingMsg;
+            try {
+                loadingMsg = await message.reply('<a:loading:1444273220823027792> Processing image with OCR...');
+            } catch (err) {
+                console.error('[MessageCreate] Failed to send loading emoji, falling back to text:', err);
+                loadingMsg = await message.reply('⏳ Processing image with OCR...');
+            }
 
             try {
+                console.log(`[MessageCreate] Downloading image from ${attachment.url}`);
                 const imageResponse = await axios.get(attachment.url, { responseType: 'arraybuffer' });
                 const imageBuffer = Buffer.from(imageResponse.data, 'binary');
 
+                console.log('[MessageCreate] Performing OCR...');
                 const ocrResult = await performOCR(imageBuffer);
+                console.log('[MessageCreate] OCR Result:', JSON.stringify(ocrResult));
 
                 // Delete loading message
                 try { await loadingMsg.delete(); } catch (e) { /* ignore */ }
@@ -250,6 +263,7 @@ export const onMessageCreate = async (client: Client, message: Message) => {
                 await message.reply('<:tcet_cross:1437995480754946178> An error occurred while processing the image. Please try again.');
             }
         } else {
+            console.log('[MessageCreate] User appears to be already verified or in review. Forwarding to ModMail.');
             // Already verified or in review, but sent an image?
             // Maybe forward to modmail if they are verified?
             await forwardToModMail(client, message, userId);

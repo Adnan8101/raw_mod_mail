@@ -18,7 +18,7 @@ const client = new Client({
     partials: [Partials.Channel, Partials.Message, Partials.Reaction]
 });
 
-client.once('ready', () => onReady(client));
+client.once('clientReady', () => onReady(client));
 client.on('messageCreate', (message) => onMessageCreate(client, message));
 client.on('guildMemberUpdate', (oldMember, newMember) => onGuildMemberUpdate(client, oldMember, newMember));
 client.on('messageReactionAdd', (reaction, user) => onMessageReactionAdd(client, reaction as any, user as any));

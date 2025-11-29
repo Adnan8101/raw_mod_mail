@@ -157,7 +157,7 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
             });
 
         } else if (customId === 'reset_verification') {
-            await interaction.deferReply({ ephemeral: true });
+            await interaction.deferReply({ ephemeral: false });
 
             // Delete record
             await VerificationModel.findOneAndDelete({ userId });
@@ -168,7 +168,8 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
                 .setTitle('Early Supporter Verification')
                 .setDescription(`Welcome! Follow the steps to get **${roleName}**.\nMake sure each screenshot contains a **visible timestamp**.\nYou must subscribe & follow the official accounts.`)
                 .addFields(
-                    { name: '1. Subscribe YouTube', value: '[Link](https://www.youtube.com/@rashikasartwork)' }
+                    { name: '1. Subscribe YouTube', value: '[Link](https://www.youtube.com/@rashikasartwork)' },
+                    { name: '2. Follow Instagram', value: '[Link](https://www.instagram.com/rashika.agarwal.79/)' }
                 )
                 .setColor('#0099ff');
 
@@ -192,13 +193,10 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
                 );
 
             await interaction.editReply({
-                content: '<:tcet_tick:1437995479567962184> **User Reset Complete.** Starting fresh...'
+                content: '<:tcet_tick:1437995479567962184> **User Reset Complete.** Starting fresh...',
+                embeds: [embed],
+                components: [row]
             });
-
-            // Since ephemeral, we can't DM easily from here if we want to keep it clean, 
-            // but the user asked for "once view visible to author". 
-            // So we just show the menu again ephemerally.
-            await interaction.followUp({ embeds: [embed], components: [row], ephemeral: true });
 
         } else if (customId === 'request_manual_review_yt' || customId === 'request_manual_review_ig') {
             await interaction.deferReply({ ephemeral: true });
