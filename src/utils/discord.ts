@@ -42,7 +42,7 @@ export const getRoleMemberCount = async (guild: Guild, roleId: string): Promise<
     }
 };
 
-export const sendVerificationLog = async (client: Client, user: User, count: number) => {
+export const sendVerificationLog = async (client: Client, user: User, count: number, imageURL?: string) => {
     try {
         const logsChannel = await client.channels.fetch(CONFIG.CHANNELS.LOGS) as TextChannel;
         if (!logsChannel) return;
@@ -52,6 +52,10 @@ export const sendVerificationLog = async (client: Client, user: User, count: num
             .setDescription(`**User:** ${user.tag} (${user.id})\n**Count:** ${count}/${CONFIG.MAX_EARLY_SUPPORTERS}`)
             .setColor('#00ff00')
             .setTimestamp();
+
+        if (imageURL) {
+            embed.setImage(imageURL);
+        }
 
         await logsChannel.send({ embeds: [embed] });
     } catch (error) {

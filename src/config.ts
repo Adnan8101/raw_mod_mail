@@ -4,7 +4,7 @@ dotenv.config();
 export const CONFIG = {
     BOT_TOKEN: process.env.BOT_TOKEN || '',
     MONGO_URI: process.env.MONGO_URI || '',
-    MAX_EARLY_SUPPORTERS: 50,
+    MAX_EARLY_SUPPORTERS: 100,
     GUILD_ID: '1114156524311412857',
 
     CHANNELS: {
