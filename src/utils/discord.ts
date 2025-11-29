@@ -33,6 +33,7 @@ export const deleteModMailThread = async (client: Client, userId: string) => {
 
 export const getRoleMemberCount = async (guild: Guild, roleId: string): Promise<number> => {
     try {
+        await guild.members.fetch(); // Force fetch all members to ensure cache is populated
         const role = await guild.roles.fetch(roleId);
         return role ? role.members.size : 0;
     } catch (error) {

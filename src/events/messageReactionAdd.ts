@@ -32,7 +32,7 @@ export const onMessageReactionAdd = async (client: Client, reaction: MessageReac
 
         if (!userRecord) return;
 
-        if (reaction.emoji.name === '✅') {
+        if (reaction.emoji.name === '✅' || reaction.emoji.id === '1437995479567962184') {
             // Approve
             try {
                 const guild = await client.guilds.fetch(message.guildId!); // Assuming the review channel is in the main guild
@@ -56,9 +56,9 @@ export const onMessageReactionAdd = async (client: Client, reaction: MessageReac
                 }
 
                 // Log
-                await logToChannel(client, `✅ **Verified:** <@${targetUserId}>\nRole Granted by Bot\nTimestamp: ${new Date().toLocaleString()}`);
+                await logToChannel(client, `<:tcet_tick:1437995479567962184> **Verified:** <@${targetUserId}>\nRole Granted by Bot\nTimestamp: ${new Date().toLocaleString()}`);
 
-                await message.reply(`✅ Approved by <@${user.id}>`);
+                await message.reply(`<:tcet_tick:1437995479567962184> Approved by <@${user.id}>`);
 
             } catch (error) {
                 console.error('Error approving user:', error);

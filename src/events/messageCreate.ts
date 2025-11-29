@@ -41,7 +41,7 @@ export const onMessageCreate = async (client: Client, message: Message) => {
                             files: message.attachments.map(a => a.url)
                         });
                     }
-                    await message.react('✅');
+                    await message.react('1437995479567962184');
                 } catch (error) {
                     console.error('Failed to DM user:', error);
                     await message.react('❌');
@@ -77,45 +77,11 @@ export const onMessageCreate = async (client: Client, message: Message) => {
         if (userRecord) {
             await VerificationModel.findOneAndDelete({ userId });
             userRecord = null; // Reset local variable to trigger welcome flow
-            await message.reply('✅ **User Reset Complete.** Starting fresh...');
+            await message.reply('<:tcet_tick:1437995479567962184> **User Reset Complete.** Starting fresh...');
         }
     }
 
-    // Initial Start (or after Reset/Start command)
-    if (!userRecord || content === 'start') {
-        // If it's a "start" command or no record, show the MAIN MENU first
-        // unless they are already verified? No, let them see the menu.
-
-        const embed = new EmbedBuilder()
-            .setTitle('Welcome to Raw ModMail')
-            .setDescription('We are here to help you. Please choose an option below to proceed.\n\n**Apply for Early Supporter**: Get verified and earn the role.\n**Open Ticket**: Contact the support team for assistance.')
-            .setThumbnail(client.user?.displayAvatarURL() || '')
-            .setColor('#0099ff');
-
-        const row = new ActionRowBuilder<ButtonBuilder>()
-            .addComponents(
-                new ButtonBuilder()
-                    .setCustomId('start_verification_flow')
-                    .setLabel('Apply for Early Supporter')
-                    .setStyle(ButtonStyle.Primary)
-                    .setEmoji('🚀'),
-                new ButtonBuilder()
-                    .setCustomId('open_ticket')
-                    .setLabel('Open Ticket')
-                    .setStyle(ButtonStyle.Secondary)
-                    .setEmoji('📩')
-            );
-
-        await message.channel.send({ embeds: [embed], components: [row] });
-
-        // Create record if it doesn't exist (it won't if we are here)
-        if (!await VerificationModel.findOne({ userId })) {
-            await VerificationModel.create({ userId });
-        }
-        return;
-    }
-
-    // Handle Screenshots
+    // Handle Screenshots (Prioritize this over Menu)
     if (message.attachments.size > 0) {
         const attachment = message.attachments.first();
         if (!attachment?.contentType?.startsWith('image/')) {
@@ -123,9 +89,14 @@ export const onMessageCreate = async (client: Client, message: Message) => {
             return;
         }
 
+        // Ensure user record exists for image processing
+        if (!userRecord) {
+            userRecord = await VerificationModel.create({ userId });
+        }
+
         // Check if they are in the verification flow
         if (!userRecord.progress.youtube || !userRecord.progress.instagram) {
-            // ... (OCR Logic - kept same, just indented)
+            // ... (OCR Logic)
             const imageResponse = await axios.get(attachment.url, { responseType: 'arraybuffer' });
             const imageBuffer = Buffer.from(imageResponse.data, 'binary');
 
@@ -157,7 +128,7 @@ export const onMessageCreate = async (client: Client, message: Message) => {
                             );
 
                         await message.reply({
-                            content: '<:tcet_tick:1437995479567962184> YouTube verified!\nNow send your Instagram screenshot.',
+                            content: `<:tcet_tick:1437995479567962184> **YouTube Verified!**\nNow please follow us on Instagram.`,
                             components: [row]
                         });
                     } else {
@@ -270,36 +241,89 @@ export const onMessageCreate = async (client: Client, message: Message) => {
             // Maybe forward to modmail if they are verified?
             await forwardToModMail(client, message, userId);
         }
-    } else {
-        // Handle text messages (ModMail)
-        if (content !== 'start' && content !== 'restart' && content !== 'reset') {
-            await forwardToModMail(client, message, userId);
+        return; // Stop processing after handling attachment
+    }
+
+    // Initial Start (or after Reset/Start command)
+    if (!userRecord || content === 'start') {
+        // If it's a "start" command or no record, show the MAIN MENU first
+        // unless they are already verified? No, let them see the menu.
+
+        const embed = new EmbedBuilder()
+            .setTitle('Welcome to Raw ModMail')
+            .setDescription('We are here to help you. Please choose an option below to proceed.\n\n**Apply for Early Supporter**: Get verified and earn the role.\n**Open Ticket**: Contact the support team for assistance.')
+            .setThumbnail(client.user?.displayAvatarURL() || '')
+            .setColor('#0099ff');
+
+        const row = new ActionRowBuilder<ButtonBuilder>()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('start_verification_flow')
+                    .setLabel('Apply for Early Supporter')
+                    .setStyle(ButtonStyle.Primary)
+                    .setEmoji('🚀'),
+                new ButtonBuilder()
+                    .setCustomId('open_ticket')
+                    .setLabel('Open Ticket')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('📩')
+            );
+
+        await message.channel.send({ embeds: [embed], components: [row] });
+
+        // Create record if it doesn't exist (it won't if we are here)
+        if (!await VerificationModel.findOne({ userId })) {
+            await VerificationModel.create({ userId });
+        }
+        return;
+    }
+
+    // Handle text messages (ModMail or Menu)
+    if (content !== 'start' && content !== 'restart' && content !== 'reset') {
+        const forwarded = await forwardToModMail(client, message, userId);
+        if (!forwarded) {
+            // No active thread, show the menu
+            const embed = new EmbedBuilder()
+                .setTitle('Welcome to Raw ModMail')
+                .setDescription('We are here to help you. Please choose an option below to proceed.\n\n**Apply for Early Supporter**: Get verified and earn the role.\n**Open Ticket**: Contact the support team for assistance.')
+                .setThumbnail(client.user?.displayAvatarURL() || '')
+                .setColor('#0099ff');
+
+            const row = new ActionRowBuilder<ButtonBuilder>()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('start_verification_flow')
+                        .setLabel('Apply for Early Supporter')
+                        .setStyle(ButtonStyle.Primary)
+                        .setEmoji('🚀'),
+                    new ButtonBuilder()
+                        .setCustomId('open_ticket')
+                        .setLabel('Open Ticket')
+                        .setStyle(ButtonStyle.Secondary)
+                        .setEmoji('📩')
+                );
+
+            await message.channel.send({ embeds: [embed], components: [row] });
         }
     }
 };
 
-const forwardToModMail = async (client: Client, message: Message, userId: string) => {
+const forwardToModMail = async (client: Client, message: Message, userId: string): Promise<boolean> => {
     try {
         const logsChannel = await client.channels.fetch(CONFIG.CHANNELS.LOGS) as TextChannel;
-        if (!logsChannel) return;
+        if (!logsChannel) return false;
 
-        // Find or create thread
-        // We look for active threads with the name "ModMail - <userId>"
+        // Find existing thread
         const activeThreads = await logsChannel.threads.fetchActive();
         let thread = activeThreads.threads.find(t => t.name.endsWith(userId));
 
         if (!thread) {
-            // Check archived threads? Or just create new
-            // For simplicity, create new if not found active
-            thread = await logsChannel.threads.create({
-                name: `ModMail - ${message.author.username} - ${userId}`,
-                autoArchiveDuration: 1440, // 24h
-                reason: 'New ModMail thread'
-            });
+            // Do NOT create a new thread automatically for random messages
+            // Return false to indicate no thread exists
+            return false;
         }
 
         // Send via Webhook to impersonate user
-        // Check for existing webhooks
         const webhooks = await logsChannel.fetchWebhooks();
         let webhook = webhooks.find(w => w.name === 'ModMail Bot');
         if (!webhook) {
@@ -318,10 +342,12 @@ const forwardToModMail = async (client: Client, message: Message, userId: string
         });
 
         await message.react('📨'); // Acknowledge receipt
+        return true;
 
     } catch (error) {
         console.error('Error forwarding to ModMail:', error);
         await message.reply('❌ Error sending message to staff.');
+        return true; // Assume handled to prevent menu spam if error
     }
 };
 
@@ -346,7 +372,7 @@ export const sendToManualReview = async (client: Client, userRecord: any, user: 
                 .setCustomId(`admin_approve_${user.id}`)
                 .setLabel('Approve')
                 .setStyle(ButtonStyle.Success)
-                .setEmoji('✅'),
+                .setEmoji('1437995479567962184'),
             new ButtonBuilder()
                 .setCustomId(`admin_reject_${user.id}`)
                 .setLabel('Reject')
