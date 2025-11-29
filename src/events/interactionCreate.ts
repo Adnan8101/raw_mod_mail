@@ -365,10 +365,14 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
     } catch (error) {
         console.error('Interaction Error:', error);
         // Try to reply if not already replied/deferred
-        if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: '❌ An error occurred.', ephemeral: true }).catch(() => { });
-        } else {
-            await interaction.followUp({ content: '❌ An error occurred.', ephemeral: true }).catch(() => { });
+        try {
+            if (!interaction.replied && !interaction.deferred) {
+                await interaction.reply({ content: '❌ An error occurred.', ephemeral: true }).catch(() => { });
+            } else {
+                await interaction.followUp({ content: '❌ An error occurred.', ephemeral: true }).catch(() => { });
+            }
+        } catch (e) {
+            console.error('Failed to send error message:', e);
         }
     }
 };

@@ -97,12 +97,12 @@ export const onMessageCreate = async (client: Client, message: Message) => {
         // Check if they are in the verification flow
         if (!userRecord.progress.youtube || !userRecord.progress.instagram) {
             // ... (OCR Logic)
-            const imageResponse = await axios.get(attachment.url, { responseType: 'arraybuffer' });
-            const imageBuffer = Buffer.from(imageResponse.data, 'binary');
-
             const loadingMsg = await message.reply('<a:loading:1444273220823027792> Processing image with OCR...');
 
             try {
+                const imageResponse = await axios.get(attachment.url, { responseType: 'arraybuffer' });
+                const imageBuffer = Buffer.from(imageResponse.data, 'binary');
+
                 const ocrResult = await performOCR(imageBuffer);
 
                 // Delete loading message
@@ -232,7 +232,7 @@ export const onMessageCreate = async (client: Client, message: Message) => {
                     await message.reply('You have already submitted both screenshots. Please wait for manual review.');
                 }
             } catch (error) {
-                console.error('OCR Processing Error:', error);
+                console.error('Processing Error:', error);
                 try { await loadingMsg.delete(); } catch (e) { /* ignore */ }
                 await message.reply('<:tcet_cross:1437995480754946178> An error occurred while processing the image. Please try again.');
             }
