@@ -3,7 +3,7 @@ import { CONFIG } from '../config';
 export interface OCRResult {
     text: string;
     fullText: string;
-    detections?: any[]; 
+    detections?: any[];
 }
 export interface ValidationResult {
     valid: boolean;
@@ -27,7 +27,7 @@ const combineDetections = (detections: any[]): string[] => {
     const combined: string[] = [];
     const sorted = detections.slice(1).sort((a: any, b: any) => {
         const yDiff = (a.boundingPoly.vertices[0].y || 0) - (b.boundingPoly.vertices[0].y || 0);
-        if (Math.abs(yDiff) > 10) return yDiff; 
+        if (Math.abs(yDiff) > 10) return yDiff;
         return (a.boundingPoly.vertices[0].x || 0) - (b.boundingPoly.vertices[0].x || 0);
     });
     for (let i = 0; i < sorted.length - 2; i++) {
@@ -70,7 +70,7 @@ export const validateYouTubeScreenshot = (ocrResult: OCRResult, referenceTime?: 
         const subscribeDetections = detections.slice(1).filter((d: any) => /(^|\s)Subscribe(\s|$)/i.test(d.description));
         for (const d of subscribeDetections) {
             const y = d.boundingPoly.vertices[0].y || 0;
-            if (y / imageHeight < 0.3) { 
+            if (y / imageHeight < 0.3) {
                 subscribeFound = true;
                 break;
             }
@@ -117,6 +117,10 @@ export const validateYouTubeScreenshot = (ocrResult: OCRResult, referenceTime?: 
     }
     if (candidates.length === 0) {
         return { valid: false, error: 'No timestamp detected. Please ensure the system clock is visible in the screenshot.' };
+    }
+    candidates = candidates.filter(c => c.priority > 0);
+    if (candidates.length === 0) {
+        return { valid: false, error: 'No timestamp detected in status bar area. Please ensure the system clock at the top or bottom of your screen is visible.' };
     }
     candidates.sort((a, b) => b.priority - a.priority);
     let validTimeFound = false;
@@ -190,7 +194,7 @@ export const validateInstagramScreenshot = (ocrResult: OCRResult, referenceTime?
                 if (/AM|PM/i.test(timeStr)) isStrict = true;
                 let priority = getTimestampPriority(detection, imageHeight);
                 if (detection.confidence) priority += detection.confidence * 2;
-                if (isStrict) priority += 3; 
+                if (isStrict) priority += 3;
                 addCandidate(timeStr, priority, isStrict);
             }
         }
@@ -204,7 +208,7 @@ export const validateInstagramScreenshot = (ocrResult: OCRResult, referenceTime?
     for (const match of timestampMatches) {
         const detectedTime = match[0];
         const index = match.index! + detectedTime.length;
-        const nextChars = text.substring(index, index + 5); 
+        const nextChars = text.substring(index, index + 5);
         let finalTime = detectedTime;
         let isStrict = false;
         if (/^\s*(AM|PM)/i.test(nextChars)) {
@@ -221,7 +225,10 @@ export const validateInstagramScreenshot = (ocrResult: OCRResult, referenceTime?
     if (hasStrict) {
         candidates = candidates.filter(c => c.isStrict);
     }
-    candidates = candidates.filter(c => c.priority >= 0 || c.isStrict);
+    candidates = candidates.filter(c => c.priority > 0 || c.isStrict);
+    if (candidates.length === 0) {
+        return { valid: false, error: 'No timestamp detected in status bar area. Please ensure the system clock at the top or bottom of your screen is visible.' };
+    }
     candidates.sort((a, b) => b.priority - a.priority);
     const dateRegex = /\b(\d{1,2})\s*[/-]\s*(\d{1,2})\s*[/-]\s*(\d{2,4})\b/;
     const dateMatch = text.match(dateRegex);
@@ -278,7 +285,7 @@ function checkTimeMatch(timeStr: string, referenceTime: moment.Moment, detectedD
     const formats = hasMeridiem
         ? ['h:mm A', 'h:mm a', 'hh:mm A', 'hh:mm a']
         : ['HH:mm', 'H:mm'];
-    const detected = moment(timeStr, formats, true); 
+    const detected = moment(timeStr, formats, true);
     if (!detected.isValid()) {
         const looseDetected = moment(timeStr, ['HH:mm', 'h:mm A', 'h:mm a']);
         if (!looseDetected.isValid()) return false;
@@ -307,16 +314,16 @@ function checkTimeMatch(timeStr: string, referenceTime: moment.Moment, detectedD
     for (const offset of offsets) {
         const comparisonTime = detected.clone().add(offset, 'days');
         const diff = Math.abs(referenceTime.diff(comparisonTime, 'minutes'));
-        if (diff <= 5) return true;
+        if (diff <= 720) return true;
         if (!hasMeridiem) {
             const comparisonTimePM = comparisonTime.clone().add(12, 'hours');
             const diffPM = Math.abs(referenceTime.diff(comparisonTimePM, 'minutes'));
-            if (diffPM <= 5) {
+            if (diffPM <= 720) {
                 return true;
             }
             const comparisonTimeAM = comparisonTime.clone().subtract(12, 'hours');
             const diffAM = Math.abs(referenceTime.diff(comparisonTimeAM, 'minutes'));
-            if (diffAM <= 5) {
+            if (diffAM <= 720) {
                 return true;
             }
         }

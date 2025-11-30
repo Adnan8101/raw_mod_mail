@@ -4,7 +4,7 @@ import { CONFIG } from '../config';
 import { sendToManualReview } from './messageCreate';
 import { getTargetRoleName, deleteModMailThread, getRoleMemberCount, sendVerificationLog } from '../utils/discord';
 export const onInteractionCreate = async (client: Client, interaction: Interaction) => {
-    try { 
+    try {
         if (interaction.isChatInputCommand()) {
             if (interaction.commandName === 'clear-my-dm') {
                 await interaction.deferReply({ ephemeral: true });
@@ -13,7 +13,7 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
                     return;
                 }
                 try {
-                    const channel = interaction.channel as DMChannel; 
+                    const channel = interaction.channel as DMChannel;
                     const messages = await channel.messages.fetch({ limit: 100 });
                     const botMessages = messages.filter(m => m.author.id === client.user?.id);
                     if (botMessages.size === 0) {
@@ -47,7 +47,7 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
                     userRecord.submittedForReview = false;
                     userRecord.progress.youtube = false;
                     userRecord.progress.instagram = false;
-                    userRecord.roleGiven = false; 
+                    userRecord.roleGiven = false;
                     await userRecord.save();
                 }
                 try {
@@ -99,7 +99,7 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
                         const row = ActionRowBuilder.from(interaction.message.components[0] as any);
                         row.components.forEach((component: any) => component.setDisabled(true));
                         const embed = EmbedBuilder.from(interaction.message.embeds[0]);
-                        embed.setColor('#ff0000'); 
+                        embed.setColor('#ff0000');
                         embed.addFields({ name: 'Revoked By', value: `${adminUser.tag} (${adminUser.id})`, inline: false });
                         embed.addFields({ name: 'Reason', value: reason, inline: false });
                         await interaction.message.edit({ embeds: [embed], components: [row as any] });
@@ -107,7 +107,7 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
                         console.error('Error updating log message:', e);
                     }
                 }
-                await interaction.editReply({ content: `✅ ** Verification Revoked ** for <@${targetUserId} >.\nReason: ${reason} ` });
+                await interaction.editReply({ content: `✅ **Verification Revoked** for <@${targetUserId}>.\n**Revoked by:** <@${adminUser.id}>\n**Reason:** ${reason}` });
                 try {
                     const targetUser = await client.users.fetch(targetUserId);
                     await targetUser.send({
@@ -324,7 +324,7 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
                 await interaction.deferUpdate();
                 const userRecord = await VerificationModel.findOne({ userId });
                 if (!userRecord) {
-                    await interaction.editReply({ content: '❌ No verification record found. Please start over.', components: [] });
+                    await interaction.editReply({ content: '❌ No verification record found. Please start over.', embeds: [], components: [] });
                     return;
                 }
                 userRecord.status = 'TICKET';
@@ -337,7 +337,11 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
                 let responseContent = '📝 **Manual Review Requested.**\nOur staff will review your screenshot shortly.';
                 await sendToManualReview(client, userRecord, user);
                 await userRecord.save();
-                await interaction.editReply({ content: responseContent, components: [] });
+                if (interaction.message) {
+                    await interaction.message.edit({ content: responseContent, embeds: [], components: [] });
+                } else {
+                    await interaction.editReply({ content: responseContent, embeds: [], components: [] });
+                }
             } else if (customId.startsWith('admin_approve_')) {
                 await interaction.deferReply({ ephemeral: false });
                 const targetUserId = customId.split('_')[2];
@@ -365,7 +369,7 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
                     const member = await guild.members.fetch(targetUserId);
                     await member.roles.add(roleId);
                     userRecord.roleGiven = true;
-                    userRecord.submittedForReview = false; 
+                    userRecord.submittedForReview = false;
                     await userRecord.save();
                     await deleteModMailThread(client, targetUserId);
                     const roleName = await getTargetRoleName(client);
@@ -418,7 +422,7 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
                 modal.addComponents(row);
                 await interaction.showModal(modal);
             } else if (customId.startsWith('admin_start_chat_')) {
-                await interaction.deferReply({ ephemeral: true }); 
+                await interaction.deferReply({ ephemeral: true });
                 const targetUserId = customId.split('_')[3];
                 try {
                     const logsChannel = await client.channels.fetch(CONFIG.CHANNELS.LOGS) as TextChannel;
@@ -450,7 +454,7 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
         console.error('Interaction Error:', error);
         try {
             if ('reply' in interaction) {
-                const repliable = interaction as any; 
+                const repliable = interaction as any;
                 if (!repliable.replied && !repliable.deferred) {
                     await repliable.reply({ content: '❌ An error occurred.', ephemeral: true }).catch(() => { });
                 } else {
