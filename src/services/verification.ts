@@ -1,75 +1,44 @@
 import moment from 'moment';
 import { CONFIG } from '../config';
-
 export interface OCRResult {
     text: string;
     fullText: string;
-    detections?: any[]; // Google Cloud Vision detections
+    detections?: any[]; 
 }
-
 export interface ValidationResult {
     valid: boolean;
     error?: string;
     timestampDetected?: string;
 }
-
-
-
 const getTimestampPriority = (detection: any, imageHeight: number): number => {
     if (!detection || !detection.boundingPoly || !detection.boundingPoly.vertices) return 0;
-
     const vertices = detection.boundingPoly.vertices;
     const yValues = vertices.map((v: any) => v.y || 0);
     const minY = Math.min(...yValues);
     const maxY = Math.max(...yValues);
     const avgY = (minY + maxY) / 2;
-
     const relativeY = avgY / imageHeight;
-
-    // Priority 3: Status Bar (Top 7%) or Taskbar (Bottom 7%)
-    // System time is almost ALWAYS at the very edge.
     if (relativeY <= 0.07 || relativeY >= 0.93) return 3;
-
-    // Priority 2: Near edges (Top 15% or Bottom 15%)
     if (relativeY <= 0.15 || relativeY >= 0.85) return 2;
-
-    // Priority -1: Middle area (likely video durations like 3:57, 2:42)
-    // We explicitly penalize these to avoid false positives.
     return -1;
 };
-
-// Regex to find potential timestamps, including those with OCR errors (letters)
-// Fixed regex to include '5' (via \d) and 'S' explicitly if needed, but \d covers 5.
-// User requested [\dIOSl] to be safe.
 const FUZZY_TIMESTAMP_REGEX = /\b[\dIOSl]{1,2}[:;. ][\dIOloS]{2}\b/g;
-
-// Helper to combine adjacent detections that might form a timestamp (e.g. "1" ":" "37")
 const combineDetections = (detections: any[]): string[] => {
     const combined: string[] = [];
-    // Sort by Y then X to ensure reading order
     const sorted = detections.slice(1).sort((a: any, b: any) => {
         const yDiff = (a.boundingPoly.vertices[0].y || 0) - (b.boundingPoly.vertices[0].y || 0);
-        if (Math.abs(yDiff) > 10) return yDiff; // Different lines
+        if (Math.abs(yDiff) > 10) return yDiff; 
         return (a.boundingPoly.vertices[0].x || 0) - (b.boundingPoly.vertices[0].x || 0);
     });
-
     for (let i = 0; i < sorted.length - 2; i++) {
         const p1 = sorted[i];
         const p2 = sorted[i + 1];
         const p3 = sorted[i + 2];
-
-        // Normalize text to handle bullets, thin spaces, etc.
         const clean = (s: string) => s.replace(/[•·‧∙]/g, '.').replace(/[\u2000-\u200B]/g, ' ');
-
-        // Check if they are close horizontally
-        // Simple check: "1" + ":" + "37"
         const str = clean(p1.description + p2.description + p3.description);
-        // Fix: Use new RegExp to avoid global state issues
         if (new RegExp(FUZZY_TIMESTAMP_REGEX).test(str)) {
             combined.push(str);
         }
-
-        // Also check pairs: "1:" + "37" or "1" + ":37"
         const str2 = clean(p1.description + p2.description);
         if (new RegExp(FUZZY_TIMESTAMP_REGEX).test(str2)) {
             combined.push(str2);
@@ -77,7 +46,6 @@ const combineDetections = (detections: any[]): string[] => {
     }
     return combined;
 };
-
 export const detectPlatform = (text: string): 'YOUTUBE' | 'INSTAGRAM' | 'UNKNOWN' => {
     if (CONFIG.REGEX.YOUTUBE_CHANNEL.test(text) || /Subscribe|Subscribed|videos|channel/i.test(text)) {
         return 'YOUTUBE';
@@ -87,35 +55,22 @@ export const detectPlatform = (text: string): 'YOUTUBE' | 'INSTAGRAM' | 'UNKNOWN
     }
     return 'UNKNOWN';
 };
-
 export const validateYouTubeScreenshot = (ocrResult: OCRResult, referenceTime?: moment.Moment): ValidationResult => {
     const text = ocrResult.fullText;
     const detections = ocrResult.detections || [];
-
-    // Smart Check: Is this even YouTube?
     if (detectPlatform(text) === 'INSTAGRAM') {
         return { valid: false, error: 'This looks like an Instagram screenshot. Please upload your **YouTube** proof.' };
     }
-
-    // Check for Fake Screenshot (Gallery, Photos, etc.)
-    if (/(Gallery|Photos|Screenshot|Recent|Files)/i.test(text)) {
-        return { valid: false, error: 'Do not upload gallery screenshot. Please upload the original screenshot directly.' };
-    }
-
-    // Check for channel name
     if (!CONFIG.REGEX.YOUTUBE_CHANNEL.test(text)) {
         return { valid: false, error: 'Channel name "Rashika\'s Art Work" not found. Please ensure you are on the correct channel.' };
     }
-
-    // STRICT CHECK: Fail if "Subscribe" button is visible (meaning not subscribed)
     let subscribeFound = false;
     if (detections.length > 0) {
         const imageHeight = detections[0].boundingPoly.vertices.reduce((max: number, v: any) => Math.max(max, v.y || 0), 0);
         const subscribeDetections = detections.slice(1).filter((d: any) => /(^|\s)Subscribe(\s|$)/i.test(d.description));
-
         for (const d of subscribeDetections) {
             const y = d.boundingPoly.vertices[0].y || 0;
-            if (y / imageHeight < 0.3) { // Top 30%
+            if (y / imageHeight < 0.3) { 
                 subscribeFound = true;
                 break;
             }
@@ -125,28 +80,19 @@ export const validateYouTubeScreenshot = (ocrResult: OCRResult, referenceTime?: 
             subscribeFound = true;
         }
     }
-
     if (subscribeFound) {
         return { valid: false, error: 'Found "Subscribe" button. You must be **Subscribed**.' };
     }
-
     if (/Unsubscribed/i.test(text)) {
         return { valid: false, error: 'Found "Unsubscribed" text. You must be **Subscribed**.' };
     }
-
-    // Check for "Subscribed"
     if (!CONFIG.REGEX.YOUTUBE_SUBSCRIPTION.test(text)) {
         return { valid: false, error: 'Subscription status not visible. Please make sure the "Subscribed" button is clearly visible.' };
     }
-
-    // Check Timestamp
     let candidates: { time: string, priority: number }[] = [];
-
-    // 1. Scan detections for timestamps
     if (detections.length > 0) {
         const wordDetections = detections.slice(1);
         const imageHeight = detections[0].boundingPoly.vertices.reduce((max: number, v: any) => Math.max(max, v.y || 0), 0);
-
         for (const detection of wordDetections) {
             const description = detection.description;
             if (new RegExp(FUZZY_TIMESTAMP_REGEX).test(description)) {
@@ -157,14 +103,11 @@ export const validateYouTubeScreenshot = (ocrResult: OCRResult, referenceTime?: 
                 candidates.push({ time: description, priority });
             }
         }
-
         const combined = combineDetections(detections);
         for (const time of combined) {
             candidates.push({ time, priority: 2.5 });
         }
     }
-
-    // 2. Fallback: Scan full text
     const timestampMatches = [...text.matchAll(FUZZY_TIMESTAMP_REGEX)];
     for (const match of timestampMatches) {
         const detectedTime = match[0];
@@ -172,16 +115,12 @@ export const validateYouTubeScreenshot = (ocrResult: OCRResult, referenceTime?: 
             candidates.push({ time: detectedTime, priority: 1 });
         }
     }
-
     if (candidates.length === 0) {
         return { valid: false, error: 'No timestamp detected. Please ensure the system clock is visible in the screenshot.' };
     }
-
     candidates.sort((a, b) => b.priority - a.priority);
-
     let validTimeFound = false;
     let validTime = '';
-
     for (const candidate of candidates) {
         const possibleTimes = repairTimestamp(candidate.time);
         for (const time of possibleTimes) {
@@ -193,35 +132,21 @@ export const validateYouTubeScreenshot = (ocrResult: OCRResult, referenceTime?: 
         }
         if (validTimeFound) break;
     }
-
     if (!validTimeFound) {
         const detectedTimes = candidates.map(c => c.time).join(', ');
-        return { valid: false, error: `Timestamp verification failed. Ensure your device time is correct and visible.` };
+        return { valid: false, error: `Timestamp verification failed. Ensure your device time is correct and visible. If this persists due to timezone issues, please request manual verification.` };
     }
-
     return { valid: true, timestampDetected: validTime };
 };
-
 export const validateInstagramScreenshot = (ocrResult: OCRResult, referenceTime?: moment.Moment): ValidationResult => {
     const text = ocrResult.fullText;
     const detections = ocrResult.detections || [];
-
-    // Smart Check: Is this even Instagram?
     if (detectPlatform(text) === 'YOUTUBE') {
         return { valid: false, error: 'This looks like a YouTube screenshot. Please upload your **Instagram** proof.' };
     }
-
-    // Check for Fake Screenshot
-    if (/(Gallery|Photos|Screenshot|Recent|Files)/i.test(text)) {
-        return { valid: false, error: 'Do not upload gallery screenshot. Please upload the original screenshot directly.' };
-    }
-
-    // Check for account name
     if (!CONFIG.REGEX.INSTAGRAM_ACCOUNT.test(text)) {
         return { valid: false, error: 'Account "rashika.agarwal.79" not found. Please ensure you are on the correct profile.' };
     }
-
-    // STRICT CHECK: Fail if "Follow" or "Follow Back" is visible
     const lines = text.split('\n');
     const followFound = lines.some(line => {
         const cleanLine = line.trim();
@@ -230,46 +155,30 @@ export const validateInstagramScreenshot = (ocrResult: OCRResult, referenceTime?
         }
         return false;
     });
-
     if (followFound) {
         return { valid: false, error: 'Found "Follow" button. You must be **Following**.' };
     }
-
-    // Check for "Following"
     if (!CONFIG.REGEX.INSTAGRAM_FOLLOWING.test(text)) {
         return { valid: false, error: 'Follow status not visible. Please make sure the "Following" button is clearly visible.' };
     }
-
-    // Check Timestamp
     let candidates: { time: string, priority: number, isStrict: boolean }[] = [];
-
-    // Helper to add candidate
     const addCandidate = (time: string, priority: number, isStrict: boolean) => {
-        // Avoid duplicates
         if (!candidates.some(c => c.time === time)) {
             candidates.push({ time, priority, isStrict });
         }
     };
-
-    // 1. Scan detections for timestamps
     if (detections.length > 0) {
         const wordDetections = detections.slice(1);
         const imageHeight = detections[0].boundingPoly.vertices.reduce((max: number, v: any) => Math.max(max, v.y || 0), 0);
-
         for (let i = 0; i < wordDetections.length; i++) {
             const detection = wordDetections[i];
             const description = detection.description;
-
-            // Check for Time + AM/PM (e.g. "1:37" then "PM")
             if (new RegExp(FUZZY_TIMESTAMP_REGEX).test(description)) {
                 let timeStr = description;
                 let isStrict = false;
-
-                // Look ahead for AM/PM
                 if (i + 1 < wordDetections.length) {
                     const next = wordDetections[i + 1];
                     if (/^(AM|PM)$/i.test(next.description)) {
-                        // Check if they are on the same line (Y coordinate close)
                         const y1 = detection.boundingPoly.vertices[0].y || 0;
                         const y2 = next.boundingPoly.vertices[0].y || 0;
                         if (Math.abs(y1 - y2) < 20) {
@@ -278,85 +187,55 @@ export const validateInstagramScreenshot = (ocrResult: OCRResult, referenceTime?
                         }
                     }
                 }
-
-                // If already has AM/PM in the word itself
                 if (/AM|PM/i.test(timeStr)) isStrict = true;
-
                 let priority = getTimestampPriority(detection, imageHeight);
                 if (detection.confidence) priority += detection.confidence * 2;
-                if (isStrict) priority += 3; // Boost strict timestamps
-
+                if (isStrict) priority += 3; 
                 addCandidate(timeStr, priority, isStrict);
             }
         }
-
         const combined = combineDetections(detections);
         for (const time of combined) {
             const isStrict = /AM|PM/i.test(time);
             addCandidate(time, isStrict ? 5.5 : 2.5, isStrict);
         }
     }
-
-    // 2. Fallback: Scan full text
     const timestampMatches = [...text.matchAll(FUZZY_TIMESTAMP_REGEX)];
     for (const match of timestampMatches) {
         const detectedTime = match[0];
-        // Check if we can find AM/PM after it in the full text
         const index = match.index! + detectedTime.length;
-        const nextChars = text.substring(index, index + 5); // Check next few chars
+        const nextChars = text.substring(index, index + 5); 
         let finalTime = detectedTime;
         let isStrict = false;
-
         if (/^\s*(AM|PM)/i.test(nextChars)) {
             const meridiem = nextChars.match(/^\s*(AM|PM)/i)![0];
             finalTime = `${detectedTime}${meridiem}`;
             isStrict = true;
         }
-
         addCandidate(finalTime, isStrict ? 4 : 1, isStrict);
     }
-
-
-
     if (candidates.length === 0) {
         return { valid: false, error: 'No timestamp detected. Please ensure the system clock is visible in the screenshot.' };
     }
-
-    // FILTER: If we have ANY strict candidates (with AM/PM), discard the non-strict ones
     const hasStrict = candidates.some(c => c.isStrict);
     if (hasStrict) {
         candidates = candidates.filter(c => c.isStrict);
     }
-
-    // FILTER: Remove candidates with negative priority (middle of screen) UNLESS they are strict
-    // This removes video durations like "3:57" in the middle of the page
     candidates = candidates.filter(c => c.priority >= 0 || c.isStrict);
-
-    // Sort candidates by priority (High -> Low)
     candidates.sort((a, b) => b.priority - a.priority);
-
-    // DATE VALIDATION
-    // Allow spaces around separators: 29 / 11 / 2025
     const dateRegex = /\b(\d{1,2})\s*[/-]\s*(\d{1,2})\s*[/-]\s*(\d{2,4})\b/;
     const dateMatch = text.match(dateRegex);
     let detectedDate: moment.Moment | null = null;
-
     if (dateMatch) {
-        // Construct date string without spaces for parsing
         const dateStr = `${dateMatch[1]}/${dateMatch[2]}/${dateMatch[3]}`;
         const d1 = moment(dateStr, ['MM/DD/YYYY', 'DD/MM/YYYY', 'M/D/YYYY', 'D/M/YYYY'], true);
         if (d1.isValid()) {
             detectedDate = d1;
         }
     }
-
     let validTimeFound = false;
     let validTime = '';
-
     for (const candidate of candidates) {
-        // Skip low priority candidates (video durations) if we have better ones
-        // But we already filtered them.
-
         const possibleTimes = repairTimestamp(candidate.time);
         for (const time of possibleTimes) {
             if (isTimeValid(time, referenceTime, detectedDate)) {
@@ -367,21 +246,15 @@ export const validateInstagramScreenshot = (ocrResult: OCRResult, referenceTime?
         }
         if (validTimeFound) break;
     }
-
     if (!validTimeFound) {
         const detectedTimes = candidates.map(c => c.time).join(', ');
-        return { valid: false, error: `Timestamp verification failed. Detected: [${detectedTimes}]. Ensure your device time is correct and visible.` };
+        return { valid: false, error: `Timestamp verification failed. Detected: [${detectedTimes}]. Ensure your device time is correct and visible. If this persists due to timezone issues, please request manual verification.` };
     }
-
     return { valid: true, timestampDetected: validTime };
 };
-
-// Helper to fix common OCR errors in timestamps
 function repairTimestamp(timeStr: string): string[] {
     const variations = new Set<string>();
     variations.add(timeStr);
-
-    // 1. Fix common letter-to-number swaps
     const fixed = timeStr
         .replace(/O/g, '0')
         .replace(/o/g, '0')
@@ -389,96 +262,58 @@ function repairTimestamp(timeStr: string): string[] {
         .replace(/I/g, '1')
         .replace(/B/g, '8')
         .replace(/S/g, '5');
-
     variations.add(fixed);
-
-    // 2. If strict (has AM/PM), don't generate wild variations
     if (/AM|PM/i.test(timeStr)) {
         return Array.from(variations);
     }
-
-    // 3. If ambiguous, only try very conservative fixes
-    // Previously we were trying to swap 1/7, 3/8 etc. This causes false positives with video durations.
-    // Let's REMOVE the digit swapping logic for now.
-
     return Array.from(variations);
 }
-
 function isTimeValid(timeStr: string, referenceTime?: moment.Moment, detectedDate?: moment.Moment | null): boolean {
-    // Use provided reference time or default to current time
     const baseTime = referenceTime ? referenceTime.clone() : moment();
-
-    // Check against System Time
     if (checkTimeMatch(timeStr, baseTime, detectedDate)) return true;
-
-    // REMOVED incorrect IST check (adding 5.5h to local time is wrong if local is already IST)
-    // If we need to support UTC servers, we should check process.env.TZ or assume system time is correct.
-    // Since user is local, baseTime (System) is correct.
-
     return false;
 }
-
 function checkTimeMatch(timeStr: string, referenceTime: moment.Moment, detectedDate?: moment.Moment | null): boolean {
-    // Check if the string contains AM/PM
     const hasMeridiem = /AM|PM/i.test(timeStr);
-
     const formats = hasMeridiem
         ? ['h:mm A', 'h:mm a', 'hh:mm A', 'hh:mm a']
         : ['HH:mm', 'H:mm'];
-
-    const detected = moment(timeStr, formats, true); // Strict parsing
-
+    const detected = moment(timeStr, formats, true); 
     if (!detected.isValid()) {
         const looseDetected = moment(timeStr, ['HH:mm', 'h:mm A', 'h:mm a']);
         if (!looseDetected.isValid()) return false;
-
         detected.set({
             hour: looseDetected.hour(),
             minute: looseDetected.minute()
         });
     }
-
-    // DATE CHECK: If we detected a date in the screenshot, ENFORCE it.
     if (detectedDate) {
-        // Strict Day Check: Must be SAME day as reference
         if (!detectedDate.isSame(referenceTime, 'day')) {
             return false;
         }
-
-        // Use the detected date for the comparison time
         detected.set({
             year: detectedDate.year(),
             month: detectedDate.month(),
             date: detectedDate.date()
         });
     } else {
-        // Default to reference date
         detected.set({
             year: referenceTime.year(),
             month: referenceTime.month(),
             date: referenceTime.date()
         });
     }
-
-    // Check for date rollover (Yesterday, Today, Tomorrow)
-    // If we enforced date above, offsets should only be 0.
     const offsets = detectedDate ? [0] : [-1, 0, 1];
-
     for (const offset of offsets) {
         const comparisonTime = detected.clone().add(offset, 'days');
-
         const diff = Math.abs(referenceTime.diff(comparisonTime, 'minutes'));
-
         if (diff <= 5) return true;
-
-        // ONLY check 12h offset if AM/PM was NOT present in the original string
         if (!hasMeridiem) {
             const comparisonTimePM = comparisonTime.clone().add(12, 'hours');
             const diffPM = Math.abs(referenceTime.diff(comparisonTimePM, 'minutes'));
             if (diffPM <= 5) {
                 return true;
             }
-
             const comparisonTimeAM = comparisonTime.clone().subtract(12, 'hours');
             const diffAM = Math.abs(referenceTime.diff(comparisonTimeAM, 'minutes'));
             if (diffAM <= 5) {
@@ -486,6 +321,5 @@ function checkTimeMatch(timeStr: string, referenceTime: moment.Moment, detectedD
             }
         }
     }
-
     return false;
 }

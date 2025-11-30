@@ -1,5 +1,4 @@
 import mongoose, { Schema, Document } from 'mongoose';
-
 export interface IVerificationState extends Document {
     userId: string;
     progress: {
@@ -14,10 +13,10 @@ export interface IVerificationState extends Document {
     };
     submittedForReview: boolean;
     roleGiven: boolean;
+    status: 'IDLE' | 'VERIFYING' | 'TICKET';
     createdAt: Date;
     updatedAt: Date;
 }
-
 const VerificationSchema: Schema = new Schema({
     userId: { type: String, required: true, unique: true },
     progress: {
@@ -31,7 +30,7 @@ const VerificationSchema: Schema = new Schema({
         ocrIG: { type: Schema.Types.Mixed, default: null }
     },
     submittedForReview: { type: Boolean, default: false },
-    roleGiven: { type: Boolean, default: false }
+    roleGiven: { type: Boolean, default: false },
+    status: { type: String, enum: ['IDLE', 'VERIFYING', 'TICKET'], default: 'IDLE' }
 }, { timestamps: true });
-
 export const VerificationModel = mongoose.model<IVerificationState>('Verification', VerificationSchema);
