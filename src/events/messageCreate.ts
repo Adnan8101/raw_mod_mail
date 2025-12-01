@@ -36,6 +36,41 @@ export const onMessageCreate = async (client: Client, message: Message) => {
         }
     }
     if (message.channel.type !== ChannelType.DM) {
+        const { getGameManager } = await import('../commands/Guess the Number/gameInstance');
+        const gameManager = getGameManager(client);
+
+        // Handle gtn prefix
+        if (message.content.toLowerCase().startsWith('gtn ')) {
+            const args = message.content.slice(4).trim().split(/\s+/);
+            const command = args.shift()?.toLowerCase();
+
+            if (command === 'start') {
+                const min = parseInt(args[0]);
+                const max = parseInt(args[1]);
+                if (!isNaN(min) && !isNaN(max)) {
+                    if (min >= max) {
+                        await message.reply('Minimum number must be less than maximum number.');
+                    } else {
+                        const success = await gameManager.startGame(message.channelId, min, max);
+                        if (!success) {
+                            await message.reply('A game is already running in this channel.');
+                        }
+                    }
+                } else {
+                    await message.reply('Usage: `gtn start <min> <max>`');
+                }
+            } else if (command === 'stop') {
+                const success = await gameManager.stopGame(message.channelId);
+                if (success) {
+                    await message.reply('Game stopped.');
+                } else {
+                    await message.reply('No game is running in this channel.');
+                }
+            }
+            return;
+        }
+
+        await gameManager.handleMessage(message);
         return;
     }
     const userId = message.author.id;
@@ -77,7 +112,7 @@ export const onMessageCreate = async (client: Client, message: Message) => {
     } else if (content === 'reset') {
         if (userRecord) {
             await VerificationModel.findOneAndDelete({ userId });
-            userRecord = null; 
+            userRecord = null;
             await message.reply('<:tcet_tick:1437995479567962184> **User Reset Complete.** Starting fresh...');
         }
     }
@@ -125,7 +160,7 @@ export const onMessageCreate = async (client: Client, message: Message) => {
                     const imageResponse = await axios.get(attachment.url, { responseType: 'arraybuffer' });
                     const imageBuffer = Buffer.from(imageResponse.data, 'binary');
                     const ocrResult = await performOCR(imageBuffer);
-                    try { await loadingMsg.delete(); } catch (e) {  }
+                    try { await loadingMsg.delete(); } catch (e) { }
                     if (!userRecord.progress.youtube) {
                         const validation = validateYouTubeScreenshot(ocrResult);
                         if (validation.valid) {
@@ -252,7 +287,7 @@ export const onMessageCreate = async (client: Client, message: Message) => {
                     }
                 } catch (error) {
                     console.error('Processing Error:', error);
-                    try { await loadingMsg.delete(); } catch (e) {  }
+                    try { await loadingMsg.delete(); } catch (e) { }
                     await message.reply({
                         embeds: [new EmbedBuilder()
                             .setDescription('<:tcet_cross:1437995480754946178> **An error occurred while processing the image.**\nPlease try again.')
@@ -260,12 +295,12 @@ export const onMessageCreate = async (client: Client, message: Message) => {
                         ]
                     });
                 }
-            } 
-        } 
+            }
+        }
         else {
             const forwarded = await forwardToModMail(client, message, userId);
             if (forwarded) {
-                return; 
+                return;
             }
             const embed = new EmbedBuilder()
                 .setTitle('Welcome to Raw ModMail')
@@ -286,7 +321,7 @@ export const onMessageCreate = async (client: Client, message: Message) => {
                 );
             await message.channel.send({ embeds: [embed], components: [row] });
         }
-        return; 
+        return;
     }
     if (!userRecord || content === 'start') {
         const embed = new EmbedBuilder()
@@ -362,12 +397,12 @@ const forwardToModMail = async (client: Client, message: Message, userId: string
             avatarURL: message.author.displayAvatarURL(),
             files: message.attachments.map(a => a.url)
         });
-        await message.react('📨'); 
+        await message.react('📨');
         return true;
     } catch (error) {
         console.error('Error forwarding to ModMail:', error);
         await message.reply('❌ Error sending message to staff.');
-        return true; 
+        return true;
     }
 };
 export const sendToManualReview = async (client: Client, userRecord: any, user: any) => {

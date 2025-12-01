@@ -6,6 +6,13 @@ import { getTargetRoleName, deleteModMailThread, getRoleMemberCount, sendVerific
 export const onInteractionCreate = async (client: Client, interaction: Interaction) => {
     try {
         if (interaction.isChatInputCommand()) {
+            const { getGameManager } = await import('../commands/Guess the Number/gameInstance');
+            const { handleGuessTheNumberCommand } = await import('../commands/Guess the Number/gtn');
+            const gameManager = getGameManager(client);
+            await handleGuessTheNumberCommand(interaction, gameManager);
+
+            if (interaction.replied || interaction.deferred) return;
+
             if (interaction.commandName === 'clear-my-dm') {
                 await interaction.deferReply({ ephemeral: true });
                 if (!interaction.channel?.isDMBased()) {

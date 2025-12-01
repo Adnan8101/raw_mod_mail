@@ -1,10 +1,12 @@
 import { REST, Routes, SlashCommandBuilder, Client } from 'discord.js';
 import { CONFIG } from '../config';
+import { guessTheNumberCommands } from '../commands/Guess the Number/gtn';
 export const registerCommands = async (client: Client) => {
     const commands = [
         new SlashCommandBuilder()
             .setName('clear-my-dm')
-            .setDescription('Clears all messages sent by the bot in your DM.')
+            .setDescription('Clears all messages sent by the bot in your DM.'),
+        ...guessTheNumberCommands
     ];
     const rest = new REST({ version: '10' }).setToken(CONFIG.BOT_TOKEN);
     try {
