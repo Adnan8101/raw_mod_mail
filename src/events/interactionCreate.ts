@@ -10,10 +10,12 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
             const { handleGuessTheNumberCommand } = await import('../commands/Guess the Number/gtn');
             const { handleMemoryCommand } = await import('../commands/Memory Game/memory');
             const { handleMathCommand } = await import('../commands/Math Game/math');
+            const { handleHiddenNumberCommand } = await import('../commands/Hidden Number/hidden');
             const gameManager = getGameManager(client);
             await handleGuessTheNumberCommand(interaction, gameManager);
             await handleMemoryCommand(interaction);
             await handleMathCommand(interaction);
+            await handleHiddenNumberCommand(interaction);
 
             if (interaction.replied || interaction.deferred) return;
 

@@ -39,9 +39,11 @@ export const onMessageCreate = async (client: Client, message: Message) => {
         const { getGameManager } = await import('../commands/Guess the Number/gameInstance');
         const { getMemoryGameManager } = await import('../commands/Memory Game/gameInstance');
         const { getMathGameManager } = await import('../commands/Math Game/mathGameInstance');
+        const { getHiddenNumberGameManager } = await import('../commands/Hidden Number/hiddenGameInstance');
         const gameManager = getGameManager(client);
         const memoryGameManager = getMemoryGameManager(client);
         const mathGameManager = getMathGameManager(client);
+        const hiddenNumberGameManager = getHiddenNumberGameManager(client);
 
         // Handle gtn prefix
         if (message.content.toLowerCase().startsWith('gtn ')) {
@@ -77,6 +79,7 @@ export const onMessageCreate = async (client: Client, message: Message) => {
         await gameManager.handleMessage(message);
         await memoryGameManager.handleMessage(message);
         await mathGameManager.handleMessage(message);
+        await hiddenNumberGameManager.handleMessage(message);
         return;
     }
     const userId = message.author.id;

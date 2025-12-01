@@ -3,6 +3,8 @@ import { CONFIG } from '../config';
 import { guessTheNumberCommands } from '../commands/Guess the Number/gtn';
 import { memoryCommands } from '../commands/Memory Game/memory';
 import { mathCommands } from '../commands/Math Game/math';
+import { hiddenNumberCommands } from '../commands/Hidden Number/hidden';
+
 export const registerCommands = async (client: Client) => {
     const commands = [
         new SlashCommandBuilder()
@@ -10,7 +12,8 @@ export const registerCommands = async (client: Client) => {
             .setDescription('Clears all messages sent by the bot in your DM.'),
         ...guessTheNumberCommands,
         ...memoryCommands,
-        ...mathCommands
+        ...mathCommands,
+        ...hiddenNumberCommands
     ];
     const rest = new REST({ version: '10' }).setToken(CONFIG.BOT_TOKEN);
     try {
