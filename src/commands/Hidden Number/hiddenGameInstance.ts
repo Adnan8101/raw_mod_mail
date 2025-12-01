@@ -90,8 +90,22 @@ export class HiddenNumberGameManager {
         const rows = Math.ceil(count / cols);
 
         // Adjust canvas size based on rows/cols
-        const width = cols * 100;
-        const height = rows * 80;
+        // Add padding
+        const padding = 40;
+
+        // Adjust cell size based on difficulty/content
+        // Hard mode has 4 digits, so we need more width.
+        let cellWidth = 100;
+        if (difficulty === 'Hard') {
+            cellWidth = 140;
+        } else if (difficulty === 'Medium') {
+            cellWidth = 120;
+        }
+
+        const cellHeight = 80;
+
+        const width = (cols * cellWidth) + (padding * 2);
+        const height = (rows * cellHeight) + (padding * 2);
 
         const canvas = createCanvas(width, height);
         const ctx = canvas.getContext('2d');
@@ -106,14 +120,13 @@ export class HiddenNumberGameManager {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
-        const cellWidth = canvas.width / cols;
-        const cellHeight = canvas.height / rows;
-
         for (let i = 0; i < numbers.length; i++) {
             const col = i % cols;
             const row = Math.floor(i / cols);
-            const x = col * cellWidth + cellWidth / 2;
-            const y = row * cellHeight + cellHeight / 2;
+
+            // Calculate x and y with padding
+            const x = padding + (col * cellWidth) + (cellWidth / 2);
+            const y = padding + (row * cellHeight) + (cellHeight / 2);
 
             ctx.fillText(numbers[i].toString(), x, y);
         }
