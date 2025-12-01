@@ -34,3 +34,15 @@ const VerificationSchema: Schema = new Schema({
     status: { type: String, enum: ['IDLE', 'VERIFYING', 'TICKET'], default: 'IDLE' }
 }, { timestamps: true });
 export const VerificationModel = mongoose.model<IVerificationState>('Verification', VerificationSchema);
+
+export interface IGuildSettings extends Document {
+    guildId: string;
+    prefix: string;
+}
+
+const GuildSettingsSchema: Schema = new Schema({
+    guildId: { type: String, required: true, unique: true },
+    prefix: { type: String, default: '!' }
+});
+
+export const GuildSettingsModel = mongoose.model<IGuildSettings>('GuildSettings', GuildSettingsSchema);

@@ -40,10 +40,41 @@ export const onMessageCreate = async (client: Client, message: Message) => {
         const { getMemoryGameManager } = await import('../commands/Memory Game/gameInstance');
         const { getMathGameManager } = await import('../commands/Math Game/mathGameInstance');
         const { getHiddenNumberGameManager } = await import('../commands/Hidden Number/hiddenGameInstance');
+        const { handleSetPrefixMessage } = await import('../commands/Moderation/setprefix');
+        const { handleStealMessage } = await import('../commands/Moderation/steal');
+        const { GuildSettingsModel } = await import('../database/schema');
+
         const gameManager = getGameManager(client);
         const memoryGameManager = getMemoryGameManager(client);
         const mathGameManager = getMathGameManager(client);
         const hiddenNumberGameManager = getHiddenNumberGameManager(client);
+
+        // Fetch Prefix
+        let prefix = '!';
+        if (message.guildId) {
+            const settings = await GuildSettingsModel.findOne({ guildId: message.guildId });
+            if (settings) prefix = settings.prefix;
+        }
+
+        // Handle Steal Reply
+        if (message.reference && message.content.trim().toLowerCase() === 'steal') {
+            await handleStealMessage(message, []);
+            return;
+        }
+
+        // Handle Prefix Commands
+        if (message.content.startsWith(prefix)) {
+            const args = message.content.slice(prefix.length).trim().split(/\s+/);
+            const commandName = args.shift()?.toLowerCase();
+
+            if (commandName === 'setprefix') {
+                await handleSetPrefixMessage(message, args);
+                return;
+            } else if (commandName === 'steal') {
+                await handleStealMessage(message, args);
+                return;
+            }
+        }
 
         // Handle gtn prefix
         if (message.content.toLowerCase().startsWith('gtn ')) {

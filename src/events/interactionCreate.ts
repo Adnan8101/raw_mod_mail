@@ -11,11 +11,16 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
             const { handleMemoryCommand } = await import('../commands/Memory Game/memory');
             const { handleMathCommand } = await import('../commands/Math Game/math');
             const { handleHiddenNumberCommand } = await import('../commands/Hidden Number/hidden');
+            const { handleSetPrefixCommand } = await import('../commands/Moderation/setprefix');
+            const { handleStealCommand } = await import('../commands/Moderation/steal');
+
             const gameManager = getGameManager(client);
             await handleGuessTheNumberCommand(interaction, gameManager);
             await handleMemoryCommand(interaction);
             await handleMathCommand(interaction);
             await handleHiddenNumberCommand(interaction);
+            await handleSetPrefixCommand(interaction);
+            await handleStealCommand(interaction);
 
             if (interaction.replied || interaction.deferred) return;
 
