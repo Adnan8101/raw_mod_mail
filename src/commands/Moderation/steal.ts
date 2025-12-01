@@ -293,7 +293,7 @@ async function processSteal(context: ChatInputCommandInteraction | Message, cont
             else await context.reply(msg);
         } else {
             if (statusMessage) await (statusMessage as Message).edit(msg);
-            else statusMessage = await context.reply(msg);
+            else await context.reply(msg);
         }
     }
 }

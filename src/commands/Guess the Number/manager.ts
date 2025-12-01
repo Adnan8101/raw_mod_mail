@@ -160,7 +160,9 @@ export class GuessTheNumberManager {
         if (!game || !game.isActive) return false;
 
         const currentRange = game.max - game.min;
-        const newRangeSize = Math.max(1, Math.floor(currentRange * (percentage / 100)));
+        // Reduce BY percentage (e.g. 30% reduction means keeping 70%)
+        const keepPercentage = 100 - percentage;
+        const newRangeSize = Math.max(1, Math.floor(currentRange * (keepPercentage / 100)));
 
         // Center the new range around the target number, but keep it within bounds
         let newMin = Math.max(game.min, game.targetNumber - Math.floor(newRangeSize / 2));

@@ -13,6 +13,8 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
             const { handleHiddenNumberCommand } = await import('../commands/Hidden Number/hidden');
             const { handleSetPrefixCommand } = await import('../commands/Moderation/setprefix');
             const { handleStealCommand } = await import('../commands/Moderation/steal');
+            const { handleRestrictCommand } = await import('../commands/Name Prevention/restrict');
+            const { handleEquationCommand } = await import('../commands/Emoji Equation/equation');
 
             const gameManager = getGameManager(client);
             await handleGuessTheNumberCommand(interaction, gameManager);
@@ -21,6 +23,8 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
             await handleHiddenNumberCommand(interaction);
             await handleSetPrefixCommand(interaction);
             await handleStealCommand(interaction);
+            await handleRestrictCommand(interaction);
+            await handleEquationCommand(interaction);
 
             if (interaction.replied || interaction.deferred) return;
 

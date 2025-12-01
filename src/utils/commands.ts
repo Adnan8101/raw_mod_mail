@@ -6,6 +6,8 @@ import { mathCommands } from '../commands/Math Game/math';
 import { hiddenNumberCommands } from '../commands/Hidden Number/hidden';
 import { setPrefixCommand } from '../commands/Moderation/setprefix';
 import { stealCommand } from '../commands/Moderation/steal';
+import { restrictCommand } from '../commands/Name Prevention/restrict';
+import { equationCommand } from '../commands/Emoji Equation/equation';
 
 export const registerCommands = async (client: Client) => {
     const commands = [
@@ -17,7 +19,9 @@ export const registerCommands = async (client: Client) => {
         ...mathCommands,
         ...hiddenNumberCommands,
         setPrefixCommand,
-        stealCommand
+        stealCommand,
+        restrictCommand,
+        equationCommand
     ];
     const rest = new REST({ version: '10' }).setToken(CONFIG.BOT_TOKEN);
     try {

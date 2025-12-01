@@ -79,7 +79,7 @@ export class MemoryGameManager {
         const gameState: MemoryGameState = {
             channelId,
             sequence: sequenceString,
-            isActive: false, // Not active for guessing yet
+            isActive: true, // Active immediately
             startTime: Date.now(),
             emojiCount,
             displayTime: time

@@ -38,11 +38,13 @@ export const VerificationModel = mongoose.model<IVerificationState>('Verificatio
 export interface IGuildSettings extends Document {
     guildId: string;
     prefix: string;
+    blockedNames: string[];
 }
 
 const GuildSettingsSchema: Schema = new Schema({
     guildId: { type: String, required: true, unique: true },
-    prefix: { type: String, default: '!' }
+    prefix: { type: String, default: '!' },
+    blockedNames: { type: [String], default: [] }
 });
 
 export const GuildSettingsModel = mongoose.model<IGuildSettings>('GuildSettings', GuildSettingsSchema);

@@ -126,7 +126,7 @@ export class MathGameManager {
             channelId,
             problem,
             answer,
-            isActive: false,
+            isActive: true,
             startTime: Date.now(),
             difficulty,
             displayTime: time

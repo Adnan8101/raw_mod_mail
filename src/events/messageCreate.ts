@@ -37,6 +37,7 @@ export const onMessageCreate = async (client: Client, message: Message) => {
     }
     if (message.channel.type !== ChannelType.DM) {
         const { getGameManager } = await import('../commands/Guess the Number/gameInstance');
+        const { getEmojiEquationManager } = await import('../commands/Emoji Equation/gameInstance');
         const { getMemoryGameManager } = await import('../commands/Memory Game/gameInstance');
         const { getMathGameManager } = await import('../commands/Math Game/mathGameInstance');
         const { getHiddenNumberGameManager } = await import('../commands/Hidden Number/hiddenGameInstance');
@@ -111,6 +112,10 @@ export const onMessageCreate = async (client: Client, message: Message) => {
         await memoryGameManager.handleMessage(message);
         await mathGameManager.handleMessage(message);
         await hiddenNumberGameManager.handleMessage(message);
+
+        const emojiEquationManager = getEmojiEquationManager(client);
+        await emojiEquationManager.handleMessage(message);
+
         return;
     }
     const userId = message.author.id;
