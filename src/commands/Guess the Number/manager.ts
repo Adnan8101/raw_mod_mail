@@ -37,6 +37,8 @@ export class GuessTheNumberManager {
             targetNumber,
             min,
             max,
+            originalMin: min,
+            originalMax: max,
             startTime: Date.now(),
             guesses: 0,
             players: new Set(),
@@ -137,7 +139,7 @@ export class GuessTheNumberManager {
 
             const embed = new EmbedBuilder()
                 .setTitle('Game Ended')
-                .setDescription(`The number was **${game.targetNumber}** which was first guessed by ${message.author}.\n\n**Minimum:**\n${game.min}\n**Maximum:**\n${game.max}\n**Number:**\n${game.targetNumber}\n**Players:**\n${game.players.size}\n**Guesses:**\n${game.guesses}\n**Winner:**\n${message.author}`)
+                .setDescription(`The number was **${game.targetNumber}** which was first guessed by ${message.author}.\n\n**Minimum:**\n${game.originalMin}\n**Maximum:**\n${game.originalMax}\n**Number:**\n${game.targetNumber}\n**Players:**\n${game.players.size}\n**Guesses:**\n${game.guesses}\n**Winner:**\n${message.author}`)
                 .setTimestamp();
 
             await (channel as any).send({ embeds: [embed] });

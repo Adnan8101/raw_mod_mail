@@ -3,6 +3,8 @@ export interface GameState {
     targetNumber: number;
     min: number;
     max: number;
+    originalMin: number;
+    originalMax: number;
     startTime: number;
     guesses: number;
     players: Set<string>;
