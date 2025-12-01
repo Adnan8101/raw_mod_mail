@@ -8,8 +8,12 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
         if (interaction.isChatInputCommand()) {
             const { getGameManager } = await import('../commands/Guess the Number/gameInstance');
             const { handleGuessTheNumberCommand } = await import('../commands/Guess the Number/gtn');
+            const { handleMemoryCommand } = await import('../commands/Memory Game/memory');
+            const { handleMathCommand } = await import('../commands/Math Game/math');
             const gameManager = getGameManager(client);
             await handleGuessTheNumberCommand(interaction, gameManager);
+            await handleMemoryCommand(interaction);
+            await handleMathCommand(interaction);
 
             if (interaction.replied || interaction.deferred) return;
 
