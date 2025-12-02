@@ -69,7 +69,7 @@ export const handleRecorderCommand = async (interaction: ChatInputCommandInterac
         const mode = 'mixed';
         const success = await manager.startRecording(guildId, voiceChannel, interaction.channelId);
         if (success) {
-            await interaction.editReply({ embeds: [createSuccessEmbed(`**Recording Started**\nChannel: ${voiceChannel.name}\nMode: (Mixed)\n\n*Your audio is being captured.*`)] });
+            await interaction.editReply({ embeds: [createSuccessEmbed(`**Recording Started**\nChannel: ${voiceChannel.name}\nMode:Mixed\n\n*Your audio is being captured.*`)] });
         } else {
             await interaction.editReply({ embeds: [createErrorEmbed('A recording is already active in this server.')] });
         }
