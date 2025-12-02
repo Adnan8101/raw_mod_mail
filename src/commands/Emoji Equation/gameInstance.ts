@@ -17,7 +17,15 @@ export class EmojiEquationGameManager {
     private client: Client;
 
     // Pool of emojis to use
-    private emojiPool = ['🍎', '🍌', '🍇', '🍉', '🍒', '🍓', '🍍', '🥝', '🥑', '🍆', '🥕', '🌽', '🥦', '🍄', '🥜', '🌰', '🍞', '🥐', '🥖', '🥨', '🥞', '🧀', '🍖', '🍗', '🥩', '🥓', '🍔', '🍟', '🍕', '🌭', '🥪', '🌮', '🌯'];
+    private emojiPool = [
+        // Fruits & Vegetables
+        '🍎', '🍌', '🍇', '🍉', '🍒', '🍓', '🍍', '🥝', '🥑', '🍆', '🥕', '🌽', '🥦', '🍄', '🥜', '🌰', '🍞', '🥐', '🥖', '🥨', '🥞', '🧀', '🍖', '🍗', '🥩', '🥓', '🍔', '🍟', '🍕', '🌭', '🥪', '🌮', '🌯',
+        '🍋', '🍊', '🍐', '🍑', '🥭', '🥥', '🥔', '🧄', '🧅', '🥗', '🍿', '🥫', '🍱', '🍘', '🍙', '🍚', '🍛', '🍜', '🍝', '🍠', '🍢', '🍣', '🍤', '🍥', '🥮', '🍡', '🥟', '🥠', '🥡',
+        // Animals
+        '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🐤', '🦆', '🦅', '🦉', '🦇', '🐺', '🐗', '🐴', '🦄', '🐝', '🐛', '🦋', '🐌', '🐞', '🐜',
+        // Objects
+        '⚽', '🏀', '🏈', '⚾', '🥎', '🎾', '🏐', '🏉', '🎱', '🏓', '🏸', '🥅', '🏒', '🏑', '🏏', '⛳', '🏹', '🎣', '🥊', '🥋', '🎽', '🛹', '🛷', '⛸', '🥌', '🎿', '⛷', '🏂', '🏋️', '🤼', '🤸', '⛹️', '🤺', '🤾', '🏌️', '🏇', '🧘'
+    ];
 
     constructor(client: Client) {
         this.client = client;
@@ -47,7 +55,7 @@ export class EmojiEquationGameManager {
         const channel = await this.client.channels.fetch(channelId) as TextChannel;
         if (channel) {
             const embed = new EmbedBuilder()
-                .setTitle('🧠 Emoji Equation')
+                .setTitle('Emoji Equation')
                 .setDescription(`**Difficulty:** ${difficulty.charAt(0).toUpperCase() + difficulty.slice(1)}\n\nSolve the final equation! First correct answer wins.`)
                 .setImage('attachment://equation.png')
                 .setColor('#0099ff')
@@ -115,15 +123,15 @@ export class EmojiEquationGameManager {
         let allowedOps = ['+'];
 
         if (difficulty === 'medium') {
-            numEmojis = 5;
-            maxVal = 20;
+            numEmojis = 4;
+            maxVal = 15;
             numEquations = 4;
             allowedOps = ['+', '-'];
         } else if (difficulty === 'hard') {
-            numEmojis = 7;
-            maxVal = 30;
+            numEmojis = 5;
+            maxVal = 20;
             numEquations = 5;
-            allowedOps = ['+', '-', '*', '/'];
+            allowedOps = ['+', '-', '*'];
         }
 
         // Select unique emojis
@@ -135,6 +143,19 @@ export class EmojiEquationGameManager {
         selectedEmojis.forEach(e => values[e] = Math.floor(Math.random() * maxVal) + 1);
 
         const equations: string[] = [];
+
+        // Helper to evaluate expression
+        const evaluate = (val1: number, op: string, val2: number): number | null => {
+            if (op === '+') return val1 + val2;
+            if (op === '-') return val1 - val2;
+            if (op === '*') return val1 * val2;
+            if (op === '/') {
+                if (val2 === 0) return null;
+                if (val1 % val2 === 0) return val1 / val2;
+                return null;
+            }
+            return null;
+        };
 
         for (let i = 0; i < numEquations - 1; i++) {
             // Pick 2-3 emojis
@@ -151,30 +172,23 @@ export class EmojiEquationGameManager {
             let availableOps = [...allowedOps].sort(() => 0.5 - Math.random());
 
             for (let j = 1; j < termsCount; j++) {
-                // Pick an op, try to use unique ones if possible
                 let op = availableOps.length > 0 ? availableOps.pop()! : allowedOps[Math.floor(Math.random() * allowedOps.length)];
-
                 emoji = selectedEmojis[Math.floor(Math.random() * selectedEmojis.length)];
                 const val = values[emoji];
 
-                if (op === '+') {
-                    currentVal += val;
-                } else if (op === '-') {
-                    currentVal -= val;
-                } else if (op === '*') {
-                    currentVal *= val;
-                } else if (op === '/') {
-                    if (currentVal % val === 0 && val !== 0) {
-                        currentVal /= val;
-                    } else {
-                        // Fallback if not divisible
-                        op = '+';
-                        currentVal += val;
-                    }
-                }
+                const result = evaluate(currentVal, op, val);
 
-                ops.push(op);
-                terms.push(emoji);
+                if (result !== null) {
+                    currentVal = result;
+                    ops.push(op);
+                    terms.push(emoji);
+                } else {
+                    // Fallback to addition if operation fails (e.g. non-integer division)
+                    op = '+';
+                    currentVal += val;
+                    ops.push(op);
+                    terms.push(emoji);
+                }
             }
 
             // Construct equation string
@@ -187,7 +201,7 @@ export class EmojiEquationGameManager {
         }
 
         // Final Equation
-        const finalTermsCount = difficulty === 'hard' ? 4 : (difficulty === 'medium' ? 3 : 2);
+        const finalTermsCount = difficulty === 'hard' ? 3 : (difficulty === 'medium' ? 3 : 2);
         const finalTerms: string[] = [];
         const finalOps: string[] = [];
 
@@ -203,23 +217,18 @@ export class EmojiEquationGameManager {
             const emoji = selectedEmojis[Math.floor(Math.random() * selectedEmojis.length)];
             const val = values[emoji];
 
-            if (op === '+') {
-                finalAnswer += val;
-            } else if (op === '-') {
-                finalAnswer -= val;
-            } else if (op === '*') {
-                finalAnswer *= val;
-            } else if (op === '/') {
-                if (finalAnswer % val === 0 && val !== 0) {
-                    finalAnswer /= val;
-                } else {
-                    op = '+';
-                    finalAnswer += val;
-                }
-            }
+            const result = evaluate(finalAnswer, op, val);
 
-            finalOps.push(op);
-            finalTerms.push(emoji);
+            if (result !== null) {
+                finalAnswer = result;
+                finalOps.push(op);
+                finalTerms.push(emoji);
+            } else {
+                op = '+';
+                finalAnswer += val;
+                finalOps.push(op);
+                finalTerms.push(emoji);
+            }
         }
 
         let finalEqStr = finalTerms[0];
