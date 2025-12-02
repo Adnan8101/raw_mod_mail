@@ -114,7 +114,7 @@ export class MathGameManager {
         const attachment = new AttachmentBuilder(canvas.toBuffer(), { name: 'math_problem.png' });
 
         const embed = new EmbedBuilder()
-            .setDescription(`**Solve this! You have ${time} seconds to view it.**`)
+            .setDescription(`**Solve this! You have ${time} seconds to view it.**\n\n**Type the correct answer. First correct message wins!**`)
             .setImage('attachment://math_problem.png');
 
         await interaction.reply({
@@ -134,30 +134,19 @@ export class MathGameManager {
 
         this.activeGames.set(channelId, gameState);
 
-        setTimeout(async () => {
-            try {
-                await interaction.deleteReply();
-                const channel = interaction.channel as TextChannel;
-                if (channel) {
-                    const embed = new EmbedBuilder()
-                        .setDescription('**Type the correct answer. First correct message wins!**');
+        if (time > 0) {
+            setTimeout(async () => {
+                try {
+                    // Check if game is still active
+                    if (!this.activeGames.has(channelId)) return;
 
-                    if (channel.isTextBased() && !(channel as any).isDMBased()) {
-                        await (channel as TextChannel).send({ embeds: [embed] });
-                    } else if ((channel as any).isDMBased()) {
-                        await (channel as any).send({ embeds: [embed] });
-                    }
-
-                    const game = this.activeGames.get(channelId);
-                    if (game) {
-                        game.isActive = true;
-                    }
+                    await interaction.deleteReply();
+                } catch (error) {
+                    console.error('Error in Math Game timeout:', error);
+                    // Don't delete game here, just failed to delete message
                 }
-            } catch (error) {
-                console.error('Error in Math Game timeout:', error);
-                this.activeGames.delete(channelId);
-            }
-        }, time * 1000);
+            }, time * 1000);
+        }
 
         return true;
     }

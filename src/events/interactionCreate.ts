@@ -16,6 +16,10 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
             const { handleRestrictCommand } = await import('../commands/Name Prevention/restrict');
             const { handleEquationCommand } = await import('../commands/Emoji Equation/equation');
             const { handleRecorderCommand } = await import('../commands/recording/recorder');
+            const { handleVowelsCommand } = await import('../commands/vowels/vowels');
+            const { handleSequenceCommand } = await import('../commands/sequence/sequence');
+            const { handleReverseCommand } = await import('../commands/reverse/reverse');
+            const { handleEvalCommand } = await import('../commands/owner/eval');
 
             const gameManager = getGameManager(client);
             await handleGuessTheNumberCommand(interaction, gameManager);
@@ -27,6 +31,11 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
             await handleRestrictCommand(interaction);
             await handleEquationCommand(interaction);
             await handleRecorderCommand(interaction);
+            await handleVowelsCommand(interaction);
+            await handleSequenceCommand(interaction);
+            await handleSequenceCommand(interaction);
+            await handleReverseCommand(interaction);
+            await handleEvalCommand(interaction);
 
             if (interaction.replied || interaction.deferred) return;
 

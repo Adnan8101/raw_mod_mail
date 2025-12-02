@@ -16,7 +16,7 @@ export class HiddenNumberGameManager {
         this.client = client;
     }
 
-    public async startGame(interaction: ChatInputCommandInteraction, difficulty: string, targetChannel: any): Promise<boolean> {
+    public async startGame(interaction: ChatInputCommandInteraction, difficulty: string, time: number, targetChannel: any): Promise<boolean> {
         const channelId = targetChannel.id;
         if (this.activeGames.has(channelId)) {
             return false;
@@ -134,7 +134,7 @@ export class HiddenNumberGameManager {
         const attachment = new AttachmentBuilder(canvas.toBuffer(), { name: 'hidden_grid.png' });
 
         const embed = new EmbedBuilder()
-            .setDescription(`**One number is missing from this sequence. First correct answer wins.**\nDifficulty: **${difficulty}**`)
+            .setDescription(`**One number is missing from this sequence. First correct answer wins.**\nDifficulty: **${difficulty}**${time > 0 ? `\nImage will be deleted in ${time} seconds.` : ''}\n\n**Type the missing number. First correct answer wins.**`)
             .setImage('attachment://hidden_grid.png')
             .setColor(null); // No color bars
 
@@ -142,10 +142,12 @@ export class HiddenNumberGameManager {
             content: `✅ **Game Created in <#${channelId}>!** Check your DMs for the hidden number.`
         });
 
+        let sentMessage: Message | undefined;
+
         if (targetChannel && targetChannel.isTextBased && targetChannel.isTextBased()) {
             // Check if it's a DM or Guild channel to be safe, though usually Guild.
             if (!targetChannel.isDMBased()) {
-                await (targetChannel as TextChannel).send({
+                sentMessage = await (targetChannel as TextChannel).send({
                     embeds: [embed],
                     files: [attachment]
                 });
@@ -153,7 +155,7 @@ export class HiddenNumberGameManager {
                 // Fallback for DM if user selected DM channel somehow
                 const dm = targetChannel as any;
                 if (dm.send) {
-                    await dm.send({
+                    sentMessage = await dm.send({
                         embeds: [embed],
                         files: [attachment]
                     });
@@ -169,6 +171,24 @@ export class HiddenNumberGameManager {
         };
 
         this.activeGames.set(channelId, gameState);
+
+        // Handle time logic
+        if (time > 0 && sentMessage) {
+            setTimeout(async () => {
+                try {
+                    // Check if game is still active
+                    if (!this.activeGames.has(channelId)) return;
+
+                    if (sentMessage && sentMessage.deletable) {
+                        await sentMessage.delete();
+                    }
+
+                } catch (error) {
+                    console.error('Error in Hidden Number Game timeout:', error);
+                }
+            }, time * 1000);
+        }
+
         return true;
     }
 

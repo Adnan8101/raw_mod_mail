@@ -56,7 +56,7 @@ export class EmojiEquationGameManager {
         if (channel) {
             const embed = new EmbedBuilder()
                 .setTitle('Emoji Equation')
-                .setDescription(`**Difficulty:** ${difficulty.charAt(0).toUpperCase() + difficulty.slice(1)}\n\nSolve the final equation! First correct answer wins.`)
+                .setDescription(`**Difficulty:** ${difficulty.charAt(0).toUpperCase() + difficulty.slice(1)}\n\nSolve the final equation! First correct answer wins.\n\n**Type the missing term (number only). First correct answer wins.**`)
                 .setImage('attachment://equation.png')
                 .setColor('#0099ff')
                 .setFooter({ text: 'Type the number to answer!' });
@@ -71,7 +71,7 @@ export class EmojiEquationGameManager {
                 console.error('Failed to DM host:', e);
             }
 
-            if (time) {
+            if (time && time > 0) {
                 setTimeout(async () => {
                     if (this.activeGames.has(channelId) && this.activeGames.get(channelId)?.isActive) {
                         try {

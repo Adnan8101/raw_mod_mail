@@ -1,14 +1,14 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction, PermissionFlagsBits, MessageFlags } from 'discord.js';
-import { getMathGameManager } from './mathGameInstance';
+import { getReverseGameManager } from './reverseManager';
 
-export const mathCommands = [
+export const reverseCommands = [
     new SlashCommandBuilder()
-        .setName('math')
-        .setDescription('Math Memory Game commands')
+        .setName('reverse')
+        .setDescription('Sentence Reverse Game commands')
         .addSubcommand(subcommand =>
             subcommand
-                .setName('quiz')
-                .setDescription('Start a new Math Memory Game')
+                .setName('start')
+                .setDescription('Start a new Reverse Game')
                 .addStringOption(option =>
                     option.setName('difficulty')
                         .setDescription('Difficulty level')
@@ -20,34 +20,44 @@ export const mathCommands = [
                         ))
                 .addIntegerOption(option =>
                     option.setName('time')
-                        .setDescription('How many seconds the image stays visible')
-                        .setMinValue(1)
-                        .setRequired(false)))
+                        .setDescription('How many seconds the image stays visible (default: 5)')
+                        .setMinValue(0)
+                        .setRequired(false))
+                .addStringOption(option =>
+                    option.setName('charset')
+                        .setDescription('Character set (default: mixed)')
+                        .setRequired(false)
+                        .addChoices(
+                            { name: 'Words', value: 'words' },
+                            { name: 'Alpha', value: 'alpha' },
+                            { name: 'Mixed', value: 'mixed' }
+                        )))
         .addSubcommand(subcommand =>
             subcommand
                 .setName('end')
-                .setDescription('Force stop the current Math Game'))
+                .setDescription('Force stop the current Reverse Game'))
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
 ];
 
-export const handleMathCommand = async (interaction: ChatInputCommandInteraction) => {
+export const handleReverseCommand = async (interaction: ChatInputCommandInteraction) => {
     const { commandName, options } = interaction;
 
-    if (commandName === 'math') {
+    if (commandName === 'reverse') {
         const subcommand = options.getSubcommand();
 
-        if (subcommand === 'quiz') {
+        if (subcommand === 'start') {
             const difficulty = options.getString('difficulty') || 'Easy';
-            const time = options.getInteger('time') || 0;
+            const time = options.getInteger('time') ?? 0;
+            const charset = options.getString('charset') || 'mixed';
 
-            const manager = getMathGameManager(interaction.client);
-            const success = await manager.startGame(interaction, difficulty, time);
+            const manager = getReverseGameManager(interaction.client);
+            const success = await manager.startGame(interaction, difficulty, time, charset);
 
             if (!success) {
                 await interaction.reply({ content: 'A game is already running in this channel.', flags: MessageFlags.Ephemeral });
             }
         } else if (subcommand === 'end') {
-            const manager = getMathGameManager(interaction.client);
+            const manager = getReverseGameManager(interaction.client);
             const success = await manager.stopGame(interaction);
 
             if (success) {

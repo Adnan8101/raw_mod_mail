@@ -5,5 +5,5 @@ export const onReady = async (client: Client) => {
     console.log(`✅ Logged in as ${client.user?.tag}!`);
     await connectDB();
     await registerCommands(client);
-    client.user?.setActivity('DMs for Verification', { type: 4 }); 
+    client.user?.setActivity('Watching you Rawshikaaa', { type: 4 }); 
 };

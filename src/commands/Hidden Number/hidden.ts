@@ -18,6 +18,12 @@ export const hiddenNumberCommands = [
                             { name: 'Medium', value: 'Medium' },
                             { name: 'Hard', value: 'Hard' }
                         ))
+                .addIntegerOption(option =>
+                    option.setName('time')
+                        .setDescription('Time in seconds to view the image (0 for unlimited)')
+                        .setRequired(false)
+                        .setMinValue(0)
+                        .setMaxValue(60))
                 .addChannelOption(option =>
                     option.setName('channel')
                         .setDescription('Channel to start the game in')
@@ -37,11 +43,12 @@ export const handleHiddenNumberCommand = async (interaction: ChatInputCommandInt
 
         if (subcommand === 'start') {
             const difficulty = options.getString('difficulty', true);
+            const time = options.getInteger('time') || 0;
             const channel = options.getChannel('channel') || interaction.channel;
 
             const manager = getHiddenNumberGameManager(interaction.client);
             // startGame handles the reply
-            const success = await manager.startGame(interaction, difficulty, channel);
+            const success = await manager.startGame(interaction, difficulty, time, channel);
 
             if (!success) {
                 await interaction.reply({ content: 'A game is already running in that channel.', flags: MessageFlags.Ephemeral });

@@ -1,4 +1,4 @@
-import { Client, Message, EmbedBuilder, TextChannel, AttachmentBuilder, Partials, ChannelType, ActionRowBuilder, ButtonBuilder, ButtonStyle, ThreadChannel } from 'discord.js';
+import { Client, Message, EmbedBuilder, TextChannel, AttachmentBuilder, Partials, ChannelType, ActionRowBuilder, ButtonBuilder, ButtonStyle, ThreadChannel, ComponentType, MessageFlags } from 'discord.js';
 import { VerificationModel } from '../database/schema';
 import { performOCR } from '../services/ocr';
 import { validateYouTubeScreenshot, validateInstagramScreenshot, detectPlatform } from '../services/verification';
@@ -43,12 +43,18 @@ export const onMessageCreate = async (client: Client, message: Message) => {
         const { getHiddenNumberGameManager } = await import('../commands/Hidden Number/hiddenGameInstance');
         const { handleSetPrefixMessage } = await import('../commands/Moderation/setprefix');
         const { handleStealMessage } = await import('../commands/Moderation/steal');
+        const { getVowelsGameManager } = await import('../commands/vowels/vowelsManager');
+        const { getSequenceGameManager } = await import('../commands/sequence/sequenceManager');
+        const { getReverseGameManager } = await import('../commands/reverse/reverseManager');
         const { GuildSettingsModel } = await import('../database/schema');
 
         const gameManager = getGameManager(client);
         const memoryGameManager = getMemoryGameManager(client);
         const mathGameManager = getMathGameManager(client);
         const hiddenNumberGameManager = getHiddenNumberGameManager(client);
+        const vowelsGameManager = getVowelsGameManager(client);
+        const sequenceGameManager = getSequenceGameManager(client);
+        const reverseGameManager = getReverseGameManager(client);
 
         // Fetch Prefix
         let prefix = '!';
@@ -73,6 +79,47 @@ export const onMessageCreate = async (client: Client, message: Message) => {
                 return;
             } else if (commandName === 'steal') {
                 await handleStealMessage(message, args);
+                return;
+            } else if (commandName === 'eval') {
+                // Owner-Only Check
+                const { OWNER_ID, evaluateCode, createEvalEmbed } = await import('../commands/owner/evalHelper');
+
+                if (message.author.id !== OWNER_ID) {
+                    return; // Ignore non-owners
+                }
+
+                const code = message.content.slice(prefix.length + 4).trim();
+                if (!code) return;
+
+                const result = await evaluateCode(code, {
+                    client: client,
+                    message: message
+                });
+
+                const { embed, row } = createEvalEmbed(result);
+
+                const reply = await message.reply({
+                    embeds: [embed],
+                    components: [row]
+                });
+
+                // Handle delete button
+                const collector = reply.createMessageComponentCollector({
+                    componentType: ComponentType.Button,
+                    time: 600000 // 10 minutes
+                });
+
+                collector.on('collect', async i => {
+                    if (i.customId === 'delete_eval') {
+                        if (i.user.id !== OWNER_ID) {
+                            await i.reply({ content: 'Only the owner can delete this.', flags: MessageFlags.Ephemeral });
+                            return;
+                        }
+                        await i.deferUpdate();
+                        await reply.delete();
+                        collector.stop();
+                    }
+                });
                 return;
             }
         }
@@ -112,6 +159,9 @@ export const onMessageCreate = async (client: Client, message: Message) => {
         await memoryGameManager.handleMessage(message);
         await mathGameManager.handleMessage(message);
         await hiddenNumberGameManager.handleMessage(message);
+        await vowelsGameManager.handleMessage(message);
+        await sequenceGameManager.handleMessage(message);
+        await reverseGameManager.handleMessage(message);
 
         const emojiEquationManager = getEmojiEquationManager(client);
         await emojiEquationManager.handleMessage(message);
