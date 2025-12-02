@@ -101,7 +101,8 @@ export const handleRecorderCommand = async (interaction: ChatInputCommandInterac
             .addFields(
                 { name: 'Duration', value: status.duration, inline: true },
                 { name: 'Active Users', value: status.userCount.toString(), inline: true },
-                { name: 'Mode', value: status.mode.toUpperCase(), inline: true }
+                { name: 'Mode', value: status.mode.toUpperCase(), inline: true },
+                { name: 'Current Size', value: status.size || '0 MB', inline: true }
             )
             .setColor('#ff0000');
 

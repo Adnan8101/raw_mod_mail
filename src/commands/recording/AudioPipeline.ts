@@ -10,7 +10,7 @@ export class AudioPipeline {
     private connection: VoiceConnection;
     private sessionDir: string;
     private mode: 'mixed' | 'multitrack' | 'both';
-    private activeStreams: Map<string, { stream: fs.WriteStream, opusStream?: AudioReceiveStream, startTime: number }> = new Map();
+    private activeStreams: Map<string, { stream: fs.WriteStream, opusStream?: AudioReceiveStream, startTime: number, filename: string }> = new Map();
     private isRecording: boolean = false;
     private participants: Set<string> = new Set();
     private splitInterval: NodeJS.Timeout | null = null;
@@ -56,20 +56,27 @@ export class AudioPipeline {
         return Array.from(this.participants);
     }
 
-    private splitRecordings() {
-        console.log('Splitting recordings...');
+    public rotate(): string[] {
+        console.log('Rotating recordings...');
+        const closedFiles: string[] = [];
 
         // Split individual user streams
         const currentUsers = Array.from(this.activeStreams.keys());
         currentUsers.forEach(userId => {
             const data = this.activeStreams.get(userId);
             if (data) {
+                closedFiles.push(data.filename);
                 data.stream.end();
                 this.activeStreams.delete(userId);
                 // Re-trigger handling to create new file
                 this.handleUserSpeaking(userId);
             }
         });
+        return closedFiles;
+    }
+
+    private splitRecordings() {
+        this.rotate();
     }
 
     private handleUserSpeaking(userId: string) {
@@ -99,6 +106,6 @@ export class AudioPipeline {
             this.activeStreams.delete(userId);
         });
 
-        this.activeStreams.set(userId, { stream: out, opusStream, startTime: Date.now() });
+        this.activeStreams.set(userId, { stream: out, opusStream, startTime: Date.now(), filename });
     }
 }
