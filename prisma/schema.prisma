@@ -1,0 +1,555 @@
+// Anti-Nuke System Database Schema
+// Production-grade schema for anti-nuke, whitelist, logging, and case management
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model AntiNukeConfig {
+  id          String   @id @default(cuid())
+  guildId     String   @unique @map("guild_id")
+  enabled     Boolean  @default(false)
+  protections String   // JSON array of protection keys: BAN_MEMBERS, KICK_MEMBERS, etc.
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("antinuke_config")
+  @@index([guildId])
+}
+
+model AntiNukeLimit {
+  id            String   @id @default(cuid())
+  guildId       String   @map("guild_id")
+  action        String   // BAN_MEMBERS, KICK_MEMBERS, DELETE_ROLES, etc.
+  limitCount    Int      @map("limit_count")
+  windowMs      Int      @default(10000) @map("window_ms") // Sliding window in milliseconds
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@unique([guildId, action])
+  @@map("antinuke_limits")
+  @@index([guildId])
+}
+
+model AntiNukePunishment {
+  id              String   @id @default(cuid())
+  guildId         String   @map("guild_id")
+  action          String   // BAN_MEMBERS, KICK_MEMBERS, etc.
+  punishment      String   // ban, kick, timeout
+  durationSeconds Int?     @map("duration_seconds") // Required for timeout
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([guildId, action])
+  @@map("antinuke_punishments")
+  @@index([guildId])
+}
+
+// ===========================
+// Action Tracking
+// ===========================
+
+model AntiNukeAction {
+  id          String   @id @default(cuid())
+  guildId     String   @map("guild_id")
+  userId      String   @map("user_id")
+  action      String   // Action type
+  targetId    String?  @map("target_id") // ID of affected resource
+  timestamp   DateTime @default(now())
+  auditLogId  String?  @map("audit_log_id")
+  metadata    String?  // JSON string for additional context
+
+  @@map("antinuke_actions")
+  @@index([guildId, userId, action, timestamp])
+  @@index([guildId, timestamp])
+}
+
+// ===========================
+// Whitelist Management
+// ===========================
+
+model Whitelist {
+  id        String   @id @default(cuid())
+  guildId   String   @map("guild_id")
+  targetId  String   @map("target_id") // User ID or Role ID
+  isRole    Boolean  @map("is_role")
+  category  String   // BAN_MEMBERS, ALL, etc.
+  createdAt DateTime @default(now()) @map("created_at")
+  createdBy String   @map("created_by") // User ID who added this
+
+  @@unique([guildId, targetId, category])
+  @@map("whitelist")
+  @@index([guildId, targetId])
+  @@index([guildId, category])
+}
+
+// ===========================
+// Logging Configuration
+// ===========================
+
+model GuildLogging {
+  id              String   @id @default(cuid())
+  guildId         String   @unique @map("guild_id")
+  modChannel      String?  @map("mod_channel")
+  securityChannel String?  @map("security_channel")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("guild_logging")
+}
+
+// ===========================
+// Moderation Cases
+// ===========================
+
+model ModerationCase {
+  id           String   @id @default(cuid())
+  caseNumber   Int      @map("case_number")
+  guildId      String   @map("guild_id")
+  targetId     String   @map("target_id")
+  moderatorId  String   @map("moderator_id")
+  action       String   // ban, kick, timeout, restore, etc.
+  reason       String?
+  metadata     String?  // JSON string for additional context
+  overturned   Boolean  @default(false)
+  overturnedBy String?  @map("overturned_by")
+  overturnedAt DateTime? @map("overturned_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([guildId, caseNumber])
+  @@map("moderation_cases")
+  @@index([guildId, targetId])
+  @@index([guildId, createdAt])
+}
+
+
+
+model RoleBackup {
+  id          String   @id @default(cuid())
+  guildId     String   @map("guild_id")
+  roleId      String   @map("role_id")
+  name        String
+  color       Int
+  position    Int
+  permissions String   // Serialized permissions
+  hoist       Boolean
+  mentionable Boolean
+  icon        String?
+  metadata    String?  // JSON string for additional role properties
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("role_backups")
+  @@index([guildId, createdAt])
+}
+
+model ChannelBackup {
+  id             String   @id @default(cuid())
+  guildId        String   @map("guild_id")
+  channelId      String   @map("channel_id")
+  name           String
+  type           Int      // Channel type enum
+  position       Int
+  parentId       String?  @map("parent_id")
+  topic          String?
+  nsfw           Boolean  @default(false)
+  permissionOverwrites String? @map("permission_overwrites") // JSON string for serialized overwrites
+  metadata       String?  // JSON string for additional channel properties
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@map("channel_backups")
+  @@index([guildId, createdAt])
+}
+
+// ===========================
+// Job Queue System
+// ===========================
+
+model JobQueue {
+  id          String   @id @default(cuid())
+  name        String   // Job type: recovery, case_write, etc.
+  data        String   // JSON string for job parameters
+  priority    Int      @default(0)
+  state       String   @default("created") // created, active, completed, failed, retry
+  retryCount  Int      @default(0) @map("retry_count")
+  retryLimit  Int      @default(3) @map("retry_limit")
+  error       String?  // Error message if failed
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("job_queue")
+  @@index([state, priority, createdAt])
+  @@index([name, state])
+}
+
+// ===========================
+// Auto Responder
+// ===========================
+
+model AutoResponder {
+  id        String   @id @default(cuid())
+  guildId   String   @map("guild_id")
+  trigger   String   // The trigger keyword/phrase
+  response  String   // The response message
+  enabled   Boolean  @default(true)
+  createdBy String   @map("created_by") // User ID who created this
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([guildId, trigger])
+  @@map("auto_responders")
+  @@index([guildId, enabled])
+}
+
+// ===========================
+// Moderation System
+// ===========================
+
+model Warn {
+  id          String   @id @default(cuid())
+  guildId     String   @map("guild_id")
+  userId      String   @map("user_id")
+  moderatorId String   @map("moderator_id")
+  reason      String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("warns")
+  @@index([guildId, userId])
+  @@index([guildId, createdAt])
+}
+
+model QuarantineConfig {
+  id              String   @id @default(cuid())
+  guildId         String   @unique @map("guild_id")
+  roleId          String   @map("role_id")
+  accessChannelId String   @map("access_channel_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("quarantine_config")
+}
+
+model GuildConfig {
+  id        String   @id @default(cuid())
+  guildId   String   @unique @map("guild_id")
+  prefix    String   @default("!")
+  blockedNames String[] @default([]) @map("blocked_names")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("guild_config")
+}
+
+model Verification {
+  id                 String   @id @default(cuid())
+  userId             String   @unique @map("user_id")
+  youtubeProgress    Boolean  @default(false) @map("youtube_progress")
+  instagramProgress  Boolean  @default(false) @map("instagram_progress")
+  youtubeScreenshot  String?  @map("youtube_screenshot")
+  instagramScreenshot String? @map("instagram_screenshot")
+  ocrYT              Json?    @map("ocr_yt")
+  ocrIG              Json?    @map("ocr_ig")
+  submittedForReview Boolean  @default(false) @map("submitted_for_review")
+  roleGiven          Boolean  @default(false) @map("role_given")
+  status             String   @default("IDLE")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  @@map("verifications")
+}
+
+model RoleAlias {
+  id        String   @id @default(cuid())
+  guildId   String   @map("guild_id")
+  roleId    String   @map("role_id")
+  alias     String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([guildId, alias])
+  @@map("role_aliases")
+  @@index([guildId])
+}
+
+// ===========================
+// Welcome/Leave Configuration
+// ===========================
+
+model WelcomeConfig {
+  id              String   @id @default(cuid())
+  guildId         String   @unique @map("guild_id")
+  welcomeChannelId String?  @map("welcome_channel_id")
+  leaveChannelId   String?  @map("leave_channel_id")
+  welcomeMessage   String?  @map("welcome_message")
+  leaveMessage     String?  @map("leave_message")
+  welcomeEnabled   Boolean  @default(false) @map("welcome_enabled")
+  leaveEnabled     Boolean  @default(false) @map("leave_enabled")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@map("welcome_config")
+}
+
+// ===========================
+// AutoMod System
+// ===========================
+
+model AutoModConfig {
+  id                    String   @id @default(cuid())
+  guildId               String   @map("guild_id")
+  type                  String   // anti_spam, mass_mention, server_invite, anti_link
+  enabled               Boolean  @default(true)
+  
+  // Anti-spam settings
+  maxMessages           Int?     @map("max_messages") @default(5)
+  timeSpanMs            Int?     @map("time_span_ms") @default(5000)
+  maxLines              Int?     @map("max_lines") @default(10)
+  
+  // Mass mention settings
+  maxMentions           Int?     @map("max_mentions") @default(5)
+  
+  // Punishment
+  punishmentType        String?  @map("punishment_type") @default("timeout") // timeout, kick, ban
+  punishmentDuration    Int?     @map("punishment_duration") @default(300) // seconds
+  
+  // Action type
+  actionType            String?  @map("action_type") @default("delete") // delete, warn, delete_warn
+  
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@unique([guildId, type])
+  @@map("automod_config")
+  @@index([guildId])
+}
+
+model AutoModWhitelist {
+  id        String   @id @default(cuid())
+  guildId   String   @map("guild_id")
+  type      String   // anti_spam, mass_mention, server_invite, anti_link, or "all"
+  targetId  String   @map("target_id") // User, Role, or Channel ID
+  targetType String  @map("target_type") // user, role, channel
+  createdBy String   @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([guildId, type, targetId])
+  @@map("automod_whitelist")
+  @@index([guildId, type])
+}
+
+model LoggingConfig {
+  id              String   @id @default(cuid())
+  guildId         String   @unique @map("guild_id")
+  channelId       String?  @map("channel_id")
+  enabled         Boolean  @default(false)
+  
+  // Event toggles
+  logRoleCreate   Boolean  @default(true) @map("log_role_create")
+  logRoleEdit     Boolean  @default(true) @map("log_role_edit")
+  logRoleDelete   Boolean  @default(true) @map("log_role_delete")
+  logChannelCreate Boolean @default(true) @map("log_channel_create")
+  logChannelEdit   Boolean @default(true) @map("log_channel_edit")
+  logChannelDelete Boolean @default(true) @map("log_channel_delete")
+  logMessageEdit   Boolean @default(true) @map("log_message_edit")
+  logMessageDelete Boolean @default(true) @map("log_message_delete")
+  
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("logging_config")
+}
+
+// ===========================
+// Invite Tracking System
+// ===========================
+
+model InviteCache {
+  id          String   @id @default(cuid())
+  guildId     String   @map("guild_id")
+  code        String   // Invite code
+  inviterId   String?  @map("inviter_id") // User who created the invite
+  inviterTag  String?  @map("inviter_tag")
+  uses        Int      @default(0)
+  maxUses     Int      @default(0) @map("max_uses")
+  temporary   Boolean  @default(false)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([guildId, code])
+  @@map("invite_cache")
+  @@index([guildId])
+  @@index([inviterId])
+}
+
+model MemberJoinData {
+  id          String   @id @default(cuid())
+  guildId     String   @map("guild_id")
+  userId      String   @map("user_id")
+  inviterId   String?  @map("inviter_id") // Who invited them
+  inviterTag  String?  @map("inviter_tag")
+  inviteCode  String?  @map("invite_code") // Which invite was used
+  joinType    String   @map("join_type") // invite, vanity, unknown, oauth
+  joinedAt    DateTime @default(now()) @map("joined_at")
+
+  @@unique([guildId, userId])
+  @@map("member_join_data")
+  @@index([guildId])
+  @@index([inviterId])
+}
+
+model InviteTracker {
+  id              String   @id @default(cuid())
+  guildId         String   @map("guild_id")
+  userId          String   @map("user_id")
+  totalInvites    Int      @default(0) @map("total_invites")
+  leftInvites     Int      @default(0) @map("left_invites") // People who left
+  fakeInvites     Int      @default(0) @map("fake_invites") // Bots/alts kicked
+  bonusInvites    Int      @default(0) @map("bonus_invites") // Admin added
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([guildId, userId])
+  @@index([guildId])
+  @@index([userId])
+}
+
+// ===========================
+// Server Stats System
+// ===========================
+
+model ServerStatsPanel {
+  id              String   @id @default(cuid())
+  guildId         String   @map("guild_id")
+  panelName       String   @map("panel_name")
+  channelType     String   @map("channel_type") // vc or text
+  categoryId      String   @map("category_id")
+  
+  // Channel IDs
+  totalChannelId  String   @map("total_channel_id")
+  usersChannelId  String   @map("users_channel_id")
+  botsChannelId   String   @map("bots_channel_id")
+  onlineChannelId String?  @map("online_channel_id")
+  idleChannelId   String?  @map("idle_channel_id")
+  dndChannelId    String?  @map("dnd_channel_id")
+  offlineChannelId String? @map("offline_channel_id")
+  
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([guildId, panelName])
+  @@map("server_stats_panels")
+  @@index([guildId])
+}
+
+// ===========================
+// Giveaway System
+// ===========================
+
+model Giveaway {
+  id                    String   @id @default(cuid())
+  messageId             String   @unique @map("message_id")
+  channelId             String   @map("channel_id")
+  guildId               String   @map("guild_id")
+  hostId                String   @map("host_id")
+  prize                 String
+  winnersCount          Int      @map("winners_count")
+  endTime               DateTime @map("end_time")
+  ended                 Boolean  @default(false)
+  createdAt             DateTime @default(now()) @map("created_at")
+  customMessage         String?  @map("custom_message")
+
+  // Requirements
+  roleRequirement       String?  @map("role_requirement")
+  inviteRequirement     Int?     @map("invite_requirement")
+  accountAgeRequirement Int?     @map("account_age_requirement")
+  serverAgeRequirement  Int?     @map("server_age_requirement")
+  captchaRequirement    Boolean  @default(false) @map("captcha_requirement")
+  messageRequirement    Int?     @map("message_requirement")
+  voiceRequirement      Int?     @map("voice_requirement")
+  entryFee              Int?     @map("entry_fee")
+
+  // New Features
+  assignRole            String?  @map("assign_role")
+  thumbnail             String?
+
+  participants          GiveawayParticipant[]
+  winners               GiveawayWinner[]
+
+  @@map("giveaways")
+  @@index([guildId])
+}
+
+model GiveawayParticipant {
+  id         String   @id @default(cuid())
+  giveawayId String   @map("giveaway_id")
+  userId     String   @map("user_id")
+  joinedAt   DateTime @default(now()) @map("joined_at")
+
+  giveaway   Giveaway @relation(fields: [giveawayId], references: [id], onDelete: Cascade)
+
+  @@unique([giveawayId, userId])
+  @@map("giveaway_participants")
+}
+
+model GiveawayWinner {
+  id         String   @id @default(cuid())
+  giveawayId String   @map("giveaway_id")
+  userId     String   @map("user_id")
+  wonAt      DateTime @default(now()) @map("won_at")
+
+  giveaway   Giveaway @relation(fields: [giveawayId], references: [id], onDelete: Cascade)
+
+  @@map("giveaway_winners")
+}
+
+// ===========================
+// Voice System
+// ===========================
+
+model AutoDragRule {
+  id              String   @id @default(cuid())
+  guildId         String   @map("guild_id")
+  userId          String   @map("user_id")
+  targetChannelId String   @map("target_channel_id")
+  createdBy       String   @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@unique([guildId, userId])
+  @@map("autodrag_rules")
+}
+
+model AutoAFKSettings {
+  id           String   @id @default(cuid())
+  guildId      String   @unique @map("guild_id")
+  enabled      Boolean  @default(false)
+  minutes      Int      @default(15)
+  afkChannelId String   @map("afk_channel_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("autoafk_settings")
+}
+
+// ===========================
+// User Stats (Messages & Voice)
+// ===========================
+
+model UserStats {
+  id            String    @id @default(cuid())
+  guildId       String    @map("guild_id")
+  userId        String    @map("user_id")
+  messageCount  Int       @default(0) @map("message_count")
+  voiceMinutes  Int       @default(0) @map("voice_minutes")
+  lastVoiceJoin DateTime? @map("last_voice_join")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@unique([guildId, userId])
+  @@map("user_stats")
+  @@index([guildId])
+  @@index([userId])
+}

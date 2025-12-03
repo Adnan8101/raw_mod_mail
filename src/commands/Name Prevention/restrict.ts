@@ -1,5 +1,5 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction, PermissionFlagsBits, EmbedBuilder } from 'discord.js';
-import { GuildSettingsModel } from '../../database/schema';
+import { prisma } from '../../database/connect';
 
 export const restrictCommand = new SlashCommandBuilder()
     .setName('restrict')
@@ -44,15 +44,20 @@ export const handleRestrictCommand = async (interaction: ChatInputCommandInterac
             const nameToAdd = interaction.options.getString('name', true).toLowerCase();
 
             try {
-                const settings = await GuildSettingsModel.findOneAndUpdate(
-                    { guildId },
-                    { $addToSet: { blockedNames: nameToAdd } },
-                    { upsert: true, new: true }
-                );
+                // Fetch current settings to ensure uniqueness (simulate $addToSet)
+                const currentSettings = await prisma.guildConfig.findUnique({ where: { guildId } });
+                let currentBlocked = currentSettings?.blockedNames || [];
+
+                if (!currentBlocked.includes(nameToAdd)) {
+                    await prisma.guildConfig.upsert({
+                        where: { guildId },
+                        update: { blockedNames: { push: nameToAdd } },
+                        create: { guildId, blockedNames: [nameToAdd] }
+                    });
+                }
 
                 const embed = new EmbedBuilder()
-                    .setDescription(`✅ **Added to blocklist:** \`${nameToAdd}\``)
-                    .setColor('#00ff00');
+                    .setDescription(`✅ **Added to blocklist:** \`${nameToAdd}\``);
 
                 await interaction.reply({ embeds: [embed] });
             } catch (error) {
@@ -63,15 +68,17 @@ export const handleRestrictCommand = async (interaction: ChatInputCommandInterac
             const nameToRemove = interaction.options.getString('name', true).toLowerCase();
 
             try {
-                await GuildSettingsModel.findOneAndUpdate(
-                    { guildId },
-                    { $pull: { blockedNames: nameToRemove } },
-                    { upsert: true }
-                );
+                const currentSettings = await prisma.guildConfig.findUnique({ where: { guildId } });
+                if (currentSettings) {
+                    const newBlocked = currentSettings.blockedNames.filter(n => n !== nameToRemove);
+                    await prisma.guildConfig.update({
+                        where: { guildId },
+                        data: { blockedNames: newBlocked }
+                    });
+                }
 
                 const embed = new EmbedBuilder()
-                    .setDescription(`✅ **Removed from blocklist:** \`${nameToRemove}\``)
-                    .setColor('#00ff00');
+                    .setDescription(`✅ **Removed from blocklist:** \`${nameToRemove}\``);
 
                 await interaction.reply({ embeds: [embed] });
             } catch (error) {
@@ -80,7 +87,7 @@ export const handleRestrictCommand = async (interaction: ChatInputCommandInterac
             }
         } else if (subcommand === 'list') {
             try {
-                const settings = await GuildSettingsModel.findOne({ guildId });
+                const settings = await prisma.guildConfig.findUnique({ where: { guildId } });
                 const blockedNames = settings?.blockedNames || [];
 
                 if (blockedNames.length === 0) {
@@ -90,8 +97,7 @@ export const handleRestrictCommand = async (interaction: ChatInputCommandInterac
 
                 const embed = new EmbedBuilder()
                     .setTitle('🚫 Blocked Names')
-                    .setDescription(blockedNames.map(n => `• \`${n}\``).join('\n'))
-                    .setColor('#ff0000');
+                    .setDescription(blockedNames.map(n => `• \`${n}\``).join('\n'));
 
                 await interaction.reply({ embeds: [embed] });
             } catch (error) {

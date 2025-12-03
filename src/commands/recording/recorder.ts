@@ -97,7 +97,7 @@ export const handleRecorderCommand = async (interaction: ChatInputCommandInterac
         }
 
         const embed = new EmbedBuilder()
-            .setTitle('🔴 Recording Status')
+            .setTitle('Recording Status')
             .addFields(
                 { name: 'Duration', value: status.duration, inline: true },
                 { name: 'Active Users', value: status.userCount.toString(), inline: true },

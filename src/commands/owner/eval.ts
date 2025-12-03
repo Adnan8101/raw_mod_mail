@@ -1,6 +1,8 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags, ComponentType } from 'discord.js';
 import { evaluateCode, createEvalEmbed, OWNER_ID } from './evalHelper';
 
+export const category = 'owner';
+
 export const evalCommand = new SlashCommandBuilder()
     .setName('eval')
     .setDescription('Evaluate code (Owner Only)')
@@ -8,6 +10,12 @@ export const evalCommand = new SlashCommandBuilder()
         option.setName('code')
             .setDescription('The code to evaluate')
             .setRequired(true));
+
+export const data = evalCommand;
+
+export const execute = async (interaction: ChatInputCommandInteraction, services: any) => {
+    await handleEvalCommand(interaction);
+}
 
 export const handleEvalCommand = async (interaction: ChatInputCommandInteraction) => {
     if (interaction.commandName !== 'eval') return;

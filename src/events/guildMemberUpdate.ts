@@ -1,7 +1,7 @@
 import { Client, GuildMember, PartialGuildMember, AuditLogEvent, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
 import { CONFIG } from '../config';
 import { logToChannel } from '../utils/logger';
-import { GuildSettingsModel } from '../database/schema';
+import { prisma } from '../database/connect';
 
 export const onGuildMemberUpdate = async (client: Client, oldMember: GuildMember | PartialGuildMember, newMember: GuildMember | PartialGuildMember) => {
     // 1. Handle Partial Members
@@ -17,7 +17,7 @@ export const onGuildMemberUpdate = async (client: Client, oldMember: GuildMember
         const newName = newMember.nickname;
         if (newName) {
             try {
-                const settings = await GuildSettingsModel.findOne({ guildId: newMember.guild.id });
+                const settings = await prisma.guildConfig.findUnique({ where: { guildId: newMember.guild.id } });
                 if (settings && settings.blockedNames && settings.blockedNames.length > 0) {
                     const lowerName = newName.toLowerCase();
                     const isBlocked = settings.blockedNames.some(blocked => lowerName.includes(blocked.toLowerCase()));
@@ -35,10 +35,9 @@ export const onGuildMemberUpdate = async (client: Client, oldMember: GuildMember
                         // If no log found (rare) or log is old, assume user changed it themselves if they don't have manage nicknames
                         // But to be safe, we only revert if we are sure it wasn't an admin.
                         // Actually, if the user changes their own nickname, the executor is the user.
-
                         // If the executor is NOT the user AND has ManageNicknames, allow it.
                         // If executor IS the user, revert it.
-
+                        
                         if (log && log.target?.id === newMember.id) {
                             // Check if the change in log matches the nickname change
                             const nickChange = log.changes.find(c => c.key === 'nick');
@@ -77,7 +76,6 @@ export const onGuildMemberUpdate = async (client: Client, oldMember: GuildMember
                                     embeds: [new EmbedBuilder()
                                         .setTitle('🚫 Name Not Allowed')
                                         .setDescription(`The name you tried to set contains a blocked word.\nYour name has been reverted.`)
-                                        .setColor('#ff0000')
                                     ]
                                 });
                             } catch (e) { }
@@ -116,7 +114,6 @@ export const onGuildMemberUpdate = async (client: Client, oldMember: GuildMember
                             embeds: [new EmbedBuilder()
                                 .setTitle('<:caution:1437997212008185866> Role Removed')
                                 .setDescription(`This role is managed ONLY by the verification bot.\nIt has been removed since it was added externally by <@${executor?.id}>.`)
-                                .setColor('#ff0000')
                                 .setFooter({ text: 'Unauthorized Assignment' })
                             ]
                         });

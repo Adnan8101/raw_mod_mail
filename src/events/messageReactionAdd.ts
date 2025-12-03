@@ -1,7 +1,8 @@
 import { Client, MessageReaction, PartialMessageReaction, User, PartialUser, TextChannel, EmbedBuilder, Partials } from 'discord.js';
-import { VerificationModel } from '../database/schema';
+import { prisma } from '../database/connect';
 import { CONFIG } from '../config';
 import { logToChannel } from '../utils/logger';
+
 export const onMessageReactionAdd = async (client: Client, reaction: MessageReaction | PartialMessageReaction, user: User | PartialUser) => {
     if (user.bot) return;
     if (reaction.partial) {
@@ -19,15 +20,21 @@ export const onMessageReactionAdd = async (client: Client, reaction: MessageReac
         const userIdField = embed.fields.find(f => f.name === 'User ID');
         if (!userIdField) return;
         const targetUserId = userIdField.value;
-        const userRecord = await VerificationModel.findOne({ userId: targetUserId });
+
+        const userRecord = await prisma.verification.findUnique({ where: { userId: targetUserId } });
         if (!userRecord) return;
+
         if (reaction.emoji.name === '✅' || reaction.emoji.id === '1437995479567962184') {
             try {
-                const guild = await client.guilds.fetch(message.guildId!); 
+                const guild = await client.guilds.fetch(message.guildId!);
                 const member = await guild.members.fetch(targetUserId);
                 await member.roles.add(CONFIG.ROLES.EARLY_SUPPORTER, 'Verified by bot');
-                userRecord.roleGiven = true;
-                await userRecord.save();
+
+                await prisma.verification.update({
+                    where: { userId: targetUserId },
+                    data: { roleGiven: true }
+                });
+
                 try {
                     await member.send({
                         embeds: [new EmbedBuilder()
@@ -46,12 +53,17 @@ export const onMessageReactionAdd = async (client: Client, reaction: MessageReac
             }
         } else if (reaction.emoji.name === '❌') {
             try {
-                userRecord.progress.youtube = false;
-                userRecord.progress.instagram = false;
-                userRecord.data.youtubeScreenshot = null;
-                userRecord.data.instagramScreenshot = null;
-                userRecord.submittedForReview = false;
-                await userRecord.save();
+                await prisma.verification.update({
+                    where: { userId: targetUserId },
+                    data: {
+                        youtubeProgress: false,
+                        instagramProgress: false,
+                        youtubeScreenshot: null,
+                        instagramScreenshot: null,
+                        submittedForReview: false
+                    }
+                });
+
                 try {
                     const userObj = await client.users.fetch(targetUserId);
                     await userObj.send({

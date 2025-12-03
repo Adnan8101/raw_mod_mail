@@ -1,43 +1,52 @@
 import { Client, Interaction, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, TextChannel, DMChannel, ModalBuilder, TextInputBuilder, TextInputStyle, ChannelType } from 'discord.js';
-import { VerificationModel } from '../database/schema';
+import { prisma } from '../database/connect';
 import { CONFIG } from '../config';
 import { sendToManualReview } from './messageCreate';
 import { getTargetRoleName, deleteModMailThread, getRoleMemberCount, sendVerificationLog } from '../utils/discord';
+
+import { getGameManager } from '../commands/Games/Guess the Number/gameInstance';
+import { handleGuessTheNumberCommand } from '../commands/Games/Guess the Number/gtn';
+import { handleMemoryCommand } from '../commands/Games/Memory Game/memory';
+import { handleMathCommand } from '../commands/Games/Math Game/math';
+import { handleHiddenNumberCommand } from '../commands/Games/Hidden Number/hidden';
+import { handleStealCommand } from '../commands/Utility/steal';
+import { handleRestrictCommand } from '../commands/Name Prevention/restrict';
+import { handleEquationCommand } from '../commands/Games/Emoji Equation/equation';
+import { handleRecorderCommand } from '../commands/recording/recorder';
+import { handleVowelsCommand } from '../commands/Games/vowels/vowels';
+import { handleSequenceCommand } from '../commands/Games/sequence/sequence';
+import { handleReverseCommand } from '../commands/Games/reverse/reverse';
+import { handleEvalCommand } from '../commands/owner/eval';
+
+const commandHandlers: Record<string, (interaction: any, ...args: any[]) => Promise<void>> = {
+    'gtn': async (interaction, client) => {
+        const gameManager = getGameManager(client);
+        await handleGuessTheNumberCommand(interaction, gameManager);
+    },
+    'memory': handleMemoryCommand,
+    'math': handleMathCommand,
+    'hidden': handleHiddenNumberCommand,
+    'steal': handleStealCommand,
+    'restrict': handleRestrictCommand,
+    'equation': handleEquationCommand,
+    'recorder': handleRecorderCommand,
+    'vowels': handleVowelsCommand,
+    'sequence': handleSequenceCommand,
+    'reverse': handleReverseCommand,
+    'eval': handleEvalCommand
+};
+
 export const onInteractionCreate = async (client: Client, interaction: Interaction) => {
     try {
         if (interaction.isChatInputCommand()) {
-            const { getGameManager } = await import('../commands/Guess the Number/gameInstance');
-            const { handleGuessTheNumberCommand } = await import('../commands/Guess the Number/gtn');
-            const { handleMemoryCommand } = await import('../commands/Memory Game/memory');
-            const { handleMathCommand } = await import('../commands/Math Game/math');
-            const { handleHiddenNumberCommand } = await import('../commands/Hidden Number/hidden');
-            const { handleSetPrefixCommand } = await import('../commands/Moderation/setprefix');
-            const { handleStealCommand } = await import('../commands/Moderation/steal');
-            const { handleRestrictCommand } = await import('../commands/Name Prevention/restrict');
-            const { handleEquationCommand } = await import('../commands/Emoji Equation/equation');
-            const { handleRecorderCommand } = await import('../commands/recording/recorder');
-            const { handleVowelsCommand } = await import('../commands/vowels/vowels');
-            const { handleSequenceCommand } = await import('../commands/sequence/sequence');
-            const { handleReverseCommand } = await import('../commands/reverse/reverse');
-            const { handleEvalCommand } = await import('../commands/owner/eval');
-
-            const gameManager = getGameManager(client);
-            await handleGuessTheNumberCommand(interaction, gameManager);
-            await handleMemoryCommand(interaction);
-            await handleMathCommand(interaction);
-            await handleHiddenNumberCommand(interaction);
-            await handleSetPrefixCommand(interaction);
-            await handleStealCommand(interaction);
-            await handleRestrictCommand(interaction);
-            await handleEquationCommand(interaction);
-            await handleRecorderCommand(interaction);
-            await handleVowelsCommand(interaction);
-            await handleSequenceCommand(interaction);
-            await handleSequenceCommand(interaction);
-            await handleReverseCommand(interaction);
-            await handleEvalCommand(interaction);
+            const handler = commandHandlers[interaction.commandName];
+            if (handler) {
+                await handler(interaction, client);
+            }
 
             if (interaction.replied || interaction.deferred) return;
+
+
 
             if (interaction.commandName === 'clear-my-dm') {
                 await interaction.deferReply({ ephemeral: true });
@@ -75,14 +84,17 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
                 const targetUserId = interaction.customId.split('_')[2];
                 const reason = interaction.fields.getTextInputValue('reason');
                 const adminUser = interaction.user;
-                const userRecord = await VerificationModel.findOne({ userId: targetUserId });
-                if (userRecord) {
-                    userRecord.submittedForReview = false;
-                    userRecord.progress.youtube = false;
-                    userRecord.progress.instagram = false;
-                    userRecord.roleGiven = false;
-                    await userRecord.save();
-                }
+
+                await prisma.verification.update({
+                    where: { userId: targetUserId },
+                    data: {
+                        submittedForReview: false,
+                        youtubeProgress: false,
+                        instagramProgress: false,
+                        roleGiven: false
+                    }
+                });
+
                 try {
                     const guild = await client.guilds.fetch(CONFIG.GUILD_ID);
                     const member = await guild.members.fetch(targetUserId).catch(() => null);
@@ -126,7 +138,9 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
                 } catch (e) {
                     console.error('Error removing role:', e);
                 }
-                await VerificationModel.findOneAndDelete({ userId: targetUserId });
+
+                await prisma.verification.delete({ where: { userId: targetUserId } });
+
                 if (interaction.message) {
                     try {
                         const row = ActionRowBuilder.from(interaction.message.components[0] as any);
@@ -160,28 +174,37 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
             const userId = user.id;
             if (customId === 'start_verification_flow') {
                 await interaction.deferReply({ ephemeral: true });
-                let userRecord = await VerificationModel.findOne({ userId });
+                let userRecord = await prisma.verification.findUnique({ where: { userId } });
+
                 if (!userRecord) {
-                    userRecord = await VerificationModel.create({ userId, status: 'VERIFYING' });
+                    userRecord = await prisma.verification.create({ data: { userId, status: 'VERIFYING' } });
                 } else {
+                    await prisma.verification.update({
+                        where: { userId },
+                        data: { status: 'VERIFYING' }
+                    });
                     userRecord.status = 'VERIFYING';
-                    await userRecord.save();
                 }
+
                 try {
                     const guild = await client.guilds.fetch(CONFIG.GUILD_ID).catch(() => null);
                     if (guild) {
                         const member = await guild.members.fetch(userId).catch(() => null);
                         if (member && member.roles.cache.has(CONFIG.ROLES.EARLY_SUPPORTER)) {
                             if (!userRecord.roleGiven) {
-                                userRecord.roleGiven = true;
-                                await userRecord.save();
+                                await prisma.verification.update({
+                                    where: { userId },
+                                    data: { roleGiven: true }
+                                });
                             }
                             await interaction.editReply({ content: '<:tcet_tick:1437995479567962184> You are already verified as an Early Supporter.' });
                             return;
                         } else {
                             if (userRecord.roleGiven) {
-                                userRecord.roleGiven = false;
-                                await userRecord.save();
+                                await prisma.verification.update({
+                                    where: { userId },
+                                    data: { roleGiven: false }
+                                });
                             }
                         }
                     }
@@ -199,8 +222,7 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
                     .addFields(
                         { name: '1. Subscribe YouTube', value: '[Link](https://www.youtube.com/@rashikasartwork)' },
                         { name: '2. Follow Instagram', value: '[Link](https://www.instagram.com/rashika.agarwal.79/)' }
-                    )
-                    .setColor('#0099ff');
+                    );
                 const row = new ActionRowBuilder<ButtonBuilder>()
                     .addComponents(
                         new ButtonBuilder()
@@ -238,7 +260,12 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
                 }
             } else if (customId === 'open_ticket') {
                 await interaction.deferReply({ ephemeral: true });
-                await VerificationModel.findOneAndUpdate({ userId }, { status: 'TICKET' }, { upsert: true });
+                await prisma.verification.upsert({
+                    where: { userId },
+                    update: { status: 'TICKET' },
+                    create: { userId, status: 'TICKET' }
+                });
+
                 const logsChannel = await client.channels.fetch(CONFIG.CHANNELS.LOGS) as TextChannel;
                 if (logsChannel) {
                     const activeThreads = await logsChannel.threads.fetchActive();
@@ -255,7 +282,6 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
                         await (interaction.channel as TextChannel).send({
                             embeds: [new EmbedBuilder()
                                 .setDescription('<:tcet_tick:1437995479567962184> **Ticket Created.**\nPlease type your message here to send it to our support team.')
-                                .setColor('#00ff00')
                             ]
                         });
                     }
@@ -265,12 +291,14 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
                 }
             } else if (customId === 'start_verification') {
                 await interaction.deferReply({ ephemeral: true });
-                let userRecord = await VerificationModel.findOne({ userId });
+                let userRecord = await prisma.verification.findUnique({ where: { userId } });
                 if (!userRecord) {
-                    userRecord = await VerificationModel.create({ userId, status: 'VERIFYING' });
+                    userRecord = await prisma.verification.create({ data: { userId, status: 'VERIFYING' } });
                 } else {
-                    userRecord.status = 'VERIFYING';
-                    await userRecord.save();
+                    await prisma.verification.update({
+                        where: { userId },
+                        data: { status: 'VERIFYING' }
+                    });
                 }
                 const row = new ActionRowBuilder<ButtonBuilder>()
                     .addComponents(
@@ -293,11 +321,18 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
                 }
             } else if (customId === 'restart_verification') {
                 await interaction.deferReply({ ephemeral: true });
-                await VerificationModel.findOneAndUpdate({ userId }, {
-                    progress: { youtube: false, instagram: false },
-                    data: { youtubeScreenshot: null, instagramScreenshot: null, ocrYT: null, ocrIG: null },
-                    submittedForReview: false,
-                    status: 'VERIFYING'
+                await prisma.verification.update({
+                    where: { userId },
+                    data: {
+                        youtubeProgress: false,
+                        instagramProgress: false,
+                        youtubeScreenshot: null,
+                        instagramScreenshot: null,
+                        ocrYT: undefined,
+                        ocrIG: undefined,
+                        submittedForReview: false,
+                        status: 'VERIFYING'
+                    }
                 });
                 if (interaction.channel) {
                     await (interaction.channel as TextChannel).send({
@@ -311,7 +346,7 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
                 }
             } else if (customId === 'reset_verification') {
                 await interaction.deferReply({ ephemeral: true });
-                await VerificationModel.findOneAndDelete({ userId });
+                await prisma.verification.delete({ where: { userId } });
                 const roleName = await getTargetRoleName(client);
                 const embed = new EmbedBuilder()
                     .setTitle('Early Supporter Verification')
@@ -319,8 +354,7 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
                     .addFields(
                         { name: '1. Subscribe YouTube', value: '[Link](https://www.youtube.com/@rashikasartwork)' },
                         { name: '2. Follow Instagram', value: '[Link](https://www.instagram.com/rashika.agarwal.79/)' }
-                    )
-                    .setColor('#0099ff');
+                    );
                 const row = new ActionRowBuilder<ButtonBuilder>()
                     .addComponents(
                         new ButtonBuilder()
@@ -355,21 +389,31 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
                 }
             } else if (customId === 'request_manual_review_yt' || customId === 'request_manual_review_ig') {
                 await interaction.deferUpdate();
-                const userRecord = await VerificationModel.findOne({ userId });
+                const userRecord = await prisma.verification.findUnique({ where: { userId } });
                 if (!userRecord) {
                     await interaction.editReply({ content: '❌ No verification record found. Please start over.', embeds: [], components: [] });
                     return;
                 }
-                userRecord.status = 'TICKET';
+
+                const updateData: any = { status: 'TICKET' };
                 if (customId === 'request_manual_review_yt') {
-                    userRecord.progress.youtube = true;
+                    updateData.youtubeProgress = true;
                 }
                 if (customId === 'request_manual_review_ig') {
-                    userRecord.progress.instagram = true;
+                    updateData.instagramProgress = true;
                 }
+
+                await prisma.verification.update({
+                    where: { userId },
+                    data: updateData
+                });
+
+                // Refresh record for manual review function
+                const updatedRecord = await prisma.verification.findUnique({ where: { userId } });
+
                 let responseContent = '📝 **Manual Review Requested.**\nOur staff will review your screenshot shortly.';
-                await sendToManualReview(client, userRecord, user);
-                await userRecord.save();
+                await sendToManualReview(client, updatedRecord, user);
+
                 if (interaction.message) {
                     await interaction.message.edit({ content: responseContent, embeds: [], components: [] });
                 } else {
@@ -378,7 +422,7 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
             } else if (customId.startsWith('admin_approve_')) {
                 await interaction.deferReply({ ephemeral: false });
                 const targetUserId = customId.split('_')[2];
-                const userRecord = await VerificationModel.findOne({ userId: targetUserId });
+                const userRecord = await prisma.verification.findUnique({ where: { userId: targetUserId } });
                 if (!userRecord) {
                     await interaction.editReply({ content: '❌ User record not found.' });
                     return;
@@ -401,9 +445,15 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
                     }
                     const member = await guild.members.fetch(targetUserId);
                     await member.roles.add(roleId);
-                    userRecord.roleGiven = true;
-                    userRecord.submittedForReview = false;
-                    await userRecord.save();
+
+                    await prisma.verification.update({
+                        where: { userId: targetUserId },
+                        data: {
+                            roleGiven: true,
+                            submittedForReview: false
+                        }
+                    });
+
                     await deleteModMailThread(client, targetUserId);
                     const roleName = await getTargetRoleName(client);
                     await member.send({
@@ -414,7 +464,7 @@ export const onInteractionCreate = async (client: Client, interaction: Interacti
                         ]
                     });
                     await interaction.editReply({ content: `<:tcet_tick:1437995479567962184> **Approved** by <@${user.id}>. Role assigned.` });
-                    const imageURLs = [userRecord.data?.youtubeScreenshot, userRecord.data?.instagramScreenshot].filter(Boolean) as string[];
+                    const imageURLs = [userRecord.youtubeScreenshot, userRecord.instagramScreenshot].filter(Boolean) as string[];
                     await sendVerificationLog(client, member.user, currentCount + 1, imageURLs);
                     const message = interaction.message;
                     if (message && message.components && message.components.length > 0) {

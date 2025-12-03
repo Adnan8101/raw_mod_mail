@@ -1,14 +1,34 @@
 import { Client, Message, EmbedBuilder, TextChannel, AttachmentBuilder, Partials, ChannelType, ActionRowBuilder, ButtonBuilder, ButtonStyle, ThreadChannel, ComponentType, MessageFlags } from 'discord.js';
-import { VerificationModel } from '../database/schema';
+import { prisma } from '../database/connect';
 import { performOCR } from '../services/ocr';
 import { validateYouTubeScreenshot, validateInstagramScreenshot, detectPlatform } from '../services/verification';
 import { CONFIG } from '../config';
 import axios from 'axios';
 import { getTargetRoleName, deleteModMailThread, getRoleMemberCount, sendVerificationLog } from '../utils/discord';
+
+import { getGameManager } from '../commands/Games/Guess the Number/gameInstance';
+import { getEmojiEquationManager } from '../commands/Games/Emoji Equation/gameInstance';
+import { getMemoryGameManager } from '../commands/Games/Memory Game/gameInstance';
+import { getMathGameManager } from '../commands/Games/Math Game/mathGameInstance';
+import { getHiddenNumberGameManager } from '../commands/Games/Hidden Number/hiddenGameInstance';
+import { handleStealMessage } from '../commands/Utility/steal';
+import { getVowelsGameManager } from '../commands/Games/vowels/vowelsManager';
+import { getSequenceGameManager } from '../commands/Games/sequence/sequenceManager';
+import { getReverseGameManager } from '../commands/Games/reverse/reverseManager';
+import { OWNER_ID, evaluateCode, createEvalEmbed } from '../commands/owner/evalHelper';
+import { DatabaseManager } from '../utils/DatabaseManager';
+
 export const onMessageCreate = async (client: Client, message: Message) => {
     if (message.author.bot) {
         return;
     }
+
+    // Track message count
+    if (message.guildId) {
+        const db = DatabaseManager.getInstance();
+        await db.incrementMessageCount(message.guildId, message.author.id);
+    }
+
     if (message.channel.type === ChannelType.PublicThread || message.channel.type === ChannelType.PrivateThread) {
         const thread = message.channel as ThreadChannel;
         if (thread.parentId === CONFIG.CHANNELS.LOGS) {
@@ -36,18 +56,6 @@ export const onMessageCreate = async (client: Client, message: Message) => {
         }
     }
     if (message.channel.type !== ChannelType.DM) {
-        const { getGameManager } = await import('../commands/Guess the Number/gameInstance');
-        const { getEmojiEquationManager } = await import('../commands/Emoji Equation/gameInstance');
-        const { getMemoryGameManager } = await import('../commands/Memory Game/gameInstance');
-        const { getMathGameManager } = await import('../commands/Math Game/mathGameInstance');
-        const { getHiddenNumberGameManager } = await import('../commands/Hidden Number/hiddenGameInstance');
-        const { handleSetPrefixMessage } = await import('../commands/Moderation/setprefix');
-        const { handleStealMessage } = await import('../commands/Moderation/steal');
-        const { getVowelsGameManager } = await import('../commands/vowels/vowelsManager');
-        const { getSequenceGameManager } = await import('../commands/sequence/sequenceManager');
-        const { getReverseGameManager } = await import('../commands/reverse/reverseManager');
-        const { GuildSettingsModel } = await import('../database/schema');
-
         const gameManager = getGameManager(client);
         const memoryGameManager = getMemoryGameManager(client);
         const mathGameManager = getMathGameManager(client);
@@ -55,11 +63,12 @@ export const onMessageCreate = async (client: Client, message: Message) => {
         const vowelsGameManager = getVowelsGameManager(client);
         const sequenceGameManager = getSequenceGameManager(client);
         const reverseGameManager = getReverseGameManager(client);
+        const emojiEquationManager = getEmojiEquationManager(client);
 
         // Fetch Prefix
         let prefix = '!';
         if (message.guildId) {
-            const settings = await GuildSettingsModel.findOne({ guildId: message.guildId });
+            const settings = await prisma.guildConfig.findUnique({ where: { guildId: message.guildId } });
             if (settings) prefix = settings.prefix;
         }
 
@@ -74,16 +83,11 @@ export const onMessageCreate = async (client: Client, message: Message) => {
             const args = message.content.slice(prefix.length).trim().split(/\s+/);
             const commandName = args.shift()?.toLowerCase();
 
-            if (commandName === 'setprefix') {
-                await handleSetPrefixMessage(message, args);
-                return;
-            } else if (commandName === 'steal') {
+            if (commandName === 'steal') {
                 await handleStealMessage(message, args);
                 return;
             } else if (commandName === 'eval') {
                 // Owner-Only Check
-                const { OWNER_ID, evaluateCode, createEvalEmbed } = await import('../commands/owner/evalHelper');
-
                 if (message.author.id !== OWNER_ID) {
                     return; // Ignore non-owners
                 }
@@ -155,33 +159,47 @@ export const onMessageCreate = async (client: Client, message: Message) => {
             return;
         }
 
-        await gameManager.handleMessage(message);
-        await memoryGameManager.handleMessage(message);
-        await mathGameManager.handleMessage(message);
-        await hiddenNumberGameManager.handleMessage(message);
-        await vowelsGameManager.handleMessage(message);
-        await sequenceGameManager.handleMessage(message);
-        await reverseGameManager.handleMessage(message);
-
-        const emojiEquationManager = getEmojiEquationManager(client);
-        await emojiEquationManager.handleMessage(message);
+        // Execute game handlers in parallel where possible or sequentially if they are fast
+        // Since most return immediately if no game is active, sequential is fine but static imports make it faster
+        await Promise.all([
+            gameManager.handleMessage(message),
+            memoryGameManager.handleMessage(message),
+            mathGameManager.handleMessage(message),
+            hiddenNumberGameManager.handleMessage(message),
+            vowelsGameManager.handleMessage(message),
+            sequenceGameManager.handleMessage(message),
+            reverseGameManager.handleMessage(message),
+            emojiEquationManager.handleMessage(message)
+        ]);
 
         return;
     }
     const userId = message.author.id;
-    let userRecord = await VerificationModel.findOne({ userId });
+    let userRecord = await prisma.verification.findUnique({ where: { userId } });
+
     if (userRecord && userRecord.roleGiven) {
         try {
             const guild = await client.guilds.fetch(CONFIG.GUILD_ID).catch(() => null);
             if (guild) {
                 const member = await guild.members.fetch(userId).catch(() => null);
                 if (!member || !member.roles.cache.has(CONFIG.ROLES.EARLY_SUPPORTER)) {
-                    userRecord.progress.youtube = false;
-                    userRecord.progress.instagram = false;
-                    userRecord.roleGiven = false;
-                    userRecord.submittedForReview = false;
-                    userRecord.data = { youtubeScreenshot: null, instagramScreenshot: null, ocrYT: null, ocrIG: null };
-                    await userRecord.save();
+                    await prisma.verification.update({
+                        where: { userId },
+                        data: {
+                            youtubeProgress: false,
+                            instagramProgress: false,
+                            roleGiven: false,
+                            submittedForReview: false,
+                            youtubeScreenshot: null,
+                            instagramScreenshot: null,
+                            ocrYT: undefined, // Prisma handles Json? as undefined/null
+                            ocrIG: undefined
+                        }
+                    });
+
+                    // Refresh record
+                    userRecord = await prisma.verification.findUnique({ where: { userId } });
+
                     await message.reply('⚠️ **Verification Status Updated**\nWe detected that you no longer have the **Early Supporter** role. Your verification progress has been reset so you can apply again.');
                 }
             }
@@ -192,21 +210,28 @@ export const onMessageCreate = async (client: Client, message: Message) => {
     const content = message.content.toLowerCase().trim();
     if (content === 'start') {
         if (!userRecord) {
-            userRecord = await VerificationModel.create({ userId });
+            userRecord = await prisma.verification.create({ data: { userId } });
         }
     } else if (content === 'restart') {
         if (userRecord) {
-            await VerificationModel.findOneAndUpdate({ userId }, {
-                progress: { youtube: false, instagram: false },
-                data: { youtubeScreenshot: null, instagramScreenshot: null, ocrYT: null, ocrIG: null },
-                submittedForReview: false
+            await prisma.verification.update({
+                where: { userId },
+                data: {
+                    youtubeProgress: false,
+                    instagramProgress: false,
+                    youtubeScreenshot: null,
+                    instagramScreenshot: null,
+                    ocrYT: undefined,
+                    ocrIG: undefined,
+                    submittedForReview: false
+                }
             });
             await message.reply('🔄 **Verification Restarted.**\nPlease upload your **YouTube** screenshot to begin again.');
             return;
         }
     } else if (content === 'reset') {
         if (userRecord) {
-            await VerificationModel.findOneAndDelete({ userId });
+            await prisma.verification.delete({ where: { userId } });
             userRecord = null;
             await message.reply('<:tcet_tick:1437995479567962184> **User Reset Complete.** Starting fresh...');
         }
@@ -221,10 +246,10 @@ export const onMessageCreate = async (client: Client, message: Message) => {
             return;
         }
         if (!userRecord) {
-            userRecord = await VerificationModel.create({ userId, status: 'IDLE' });
+            userRecord = await prisma.verification.create({ data: { userId, status: 'IDLE' } });
         }
         if (userRecord.status === 'VERIFYING') {
-            if (userRecord.progress.youtube && userRecord.progress.instagram) {
+            if (userRecord.youtubeProgress && userRecord.instagramProgress) {
                 await message.reply({
                     embeds: [new EmbedBuilder()
                         .setDescription('⚠️ **You have already submitted both screenshots.**\nPlease wait for manual review.')
@@ -233,7 +258,7 @@ export const onMessageCreate = async (client: Client, message: Message) => {
                 });
                 return;
             }
-            if (!userRecord.progress.youtube || !userRecord.progress.instagram) {
+            if (!userRecord.youtubeProgress || !userRecord.instagramProgress) {
                 let loadingMsg;
                 try {
                     loadingMsg = await message.reply({
@@ -256,13 +281,20 @@ export const onMessageCreate = async (client: Client, message: Message) => {
                     const imageBuffer = Buffer.from(imageResponse.data, 'binary');
                     const ocrResult = await performOCR(imageBuffer);
                     try { await loadingMsg.delete(); } catch (e) { }
-                    if (!userRecord.progress.youtube) {
+                    if (!userRecord.youtubeProgress) {
                         const validation = validateYouTubeScreenshot(ocrResult);
                         if (validation.valid) {
-                            userRecord.progress.youtube = true;
-                            userRecord.data.youtubeScreenshot = attachment.url;
-                            userRecord.data.ocrYT = { ...ocrResult, ...validation };
-                            await userRecord.save();
+                            await prisma.verification.update({
+                                where: { userId },
+                                data: {
+                                    youtubeProgress: true,
+                                    youtubeScreenshot: attachment.url,
+                                    ocrYT: { ...ocrResult, ...validation } as any
+                                }
+                            });
+                            // Refresh record
+                            userRecord = await prisma.verification.findUnique({ where: { userId } });
+
                             const row = new ActionRowBuilder<ButtonBuilder>()
                                 .addComponents(
                                     new ButtonBuilder()
@@ -273,7 +305,6 @@ export const onMessageCreate = async (client: Client, message: Message) => {
                             await message.reply({
                                 embeds: [new EmbedBuilder()
                                     .setDescription('<:tcet_tick:1437995479567962184> **YouTube Verified!**\nNow please follow us on Instagram.')
-                                    .setColor('#00ff00')
                                 ],
                                 components: [row]
                             });
@@ -286,30 +317,43 @@ export const onMessageCreate = async (client: Client, message: Message) => {
                                         .setStyle(ButtonStyle.Secondary)
                                         .setEmoji('📝')
                                 );
-                            userRecord.data.youtubeScreenshot = attachment.url;
-                            await userRecord.save();
+
+                            await prisma.verification.update({
+                                where: { userId },
+                                data: { youtubeScreenshot: attachment.url }
+                            });
+
                             await message.reply({
                                 embeds: [new EmbedBuilder()
                                     .setDescription(`<:tcet_cross:1437995480754946178> **Screenshot failed OCR check.**\nPlease re-upload the image of **YouTube** with correct **${validation.error}**\n\nIf you believe this is a mistake, you can apply for manual verification below.`)
-                                    .setColor('#ff0000')
                                 ],
                                 components: [row]
                             });
                         }
-                    } else if (!userRecord.progress.instagram) {
+                    } else if (!userRecord.instagramProgress) {
                         const validation = validateInstagramScreenshot(ocrResult);
                         if (validation.valid) {
-                            userRecord.progress.instagram = true;
-                            userRecord.data.instagramScreenshot = attachment.url;
-                            userRecord.data.ocrIG = { ...ocrResult, ...validation };
-                            await userRecord.save();
+                            await prisma.verification.update({
+                                where: { userId },
+                                data: {
+                                    instagramProgress: true,
+                                    instagramScreenshot: attachment.url,
+                                    ocrIG: { ...ocrResult, ...validation } as any
+                                }
+                            });
+                            // Refresh record
+                            userRecord = await prisma.verification.findUnique({ where: { userId } });
+
                             await message.reply({
                                 embeds: [new EmbedBuilder()
                                     .setDescription('<:tcet_tick:1437995479567962184> **Instagram verified!**')
-                                    .setColor('#00ff00')
                                 ]
                             });
-                            if (userRecord.data.ocrYT?.valid) {
+
+                            // Check if YT is valid (need to cast Json to any or check properties)
+                            const ocrYT = userRecord?.ocrYT as any;
+
+                            if (ocrYT?.valid) {
                                 try {
                                     const reviewChannel = await client.channels.fetch(CONFIG.CHANNELS.MANUAL_REVIEW) as TextChannel;
                                     if (reviewChannel) {
@@ -322,19 +366,26 @@ export const onMessageCreate = async (client: Client, message: Message) => {
                                         }
                                         const member = await guild.members.fetch(userId);
                                         await member.roles.add(roleId);
-                                        userRecord.roleGiven = true;
-                                        userRecord.submittedForReview = false;
-                                        await userRecord.save();
+
+                                        await prisma.verification.update({
+                                            where: { userId },
+                                            data: {
+                                                roleGiven: true,
+                                                submittedForReview: false
+                                            }
+                                        });
+                                        // Refresh record
+                                        userRecord = await prisma.verification.findUnique({ where: { userId } });
+
                                         await deleteModMailThread(client, userId);
                                         const roleName = await getTargetRoleName(client);
                                         await message.reply({
                                             embeds: [new EmbedBuilder()
                                                 .setTitle('Verification Successful!')
                                                 .setDescription(`You have been verified and given the **${roleName}** role.`)
-                                                .setColor('#00ff00')
                                             ]
                                         });
-                                        await sendVerificationLog(client, message.author, currentCount + 1, [userRecord.data.youtubeScreenshot, userRecord.data.instagramScreenshot].filter(Boolean) as string[]);
+                                        await sendVerificationLog(client, message.author, currentCount + 1, [userRecord?.youtubeScreenshot, userRecord?.instagramScreenshot].filter(Boolean) as string[]);
                                     } else {
                                         console.error('Could not find guild to assign role.');
                                         await message.reply('Verification complete, but could not assign role automatically. Please contact staff.');
@@ -362,8 +413,12 @@ export const onMessageCreate = async (client: Client, message: Message) => {
                                         .setStyle(ButtonStyle.Secondary)
                                         .setEmoji('📝')
                                 );
-                            userRecord.data.instagramScreenshot = attachment.url;
-                            await userRecord.save();
+
+                            await prisma.verification.update({
+                                where: { userId },
+                                data: { instagramScreenshot: attachment.url }
+                            });
+
                             await message.reply({
                                 embeds: [new EmbedBuilder()
                                     .setDescription(`<:tcet_cross:1437995480754946178> **Screenshot failed OCR check.**\nPlease re-upload the image of **Instagram** with correct **${validation.error}**\n\nIf you believe this is a mistake, you can apply for manual verification below.`)
@@ -438,8 +493,8 @@ export const onMessageCreate = async (client: Client, message: Message) => {
                     .setEmoji('📩')
             );
         await message.channel.send({ embeds: [embed], components: [row] });
-        if (!await VerificationModel.findOne({ userId })) {
-            await VerificationModel.create({ userId });
+        if (!await prisma.verification.findUnique({ where: { userId } })) {
+            await prisma.verification.create({ data: { userId } });
         }
         return;
     }
@@ -503,14 +558,18 @@ const forwardToModMail = async (client: Client, message: Message, userId: string
 export const sendToManualReview = async (client: Client, userRecord: any, user: any) => {
     const reviewChannel = await client.channels.fetch(CONFIG.CHANNELS.MANUAL_REVIEW) as TextChannel;
     if (!reviewChannel) return;
+
+    const ocrYT = userRecord.ocrYT as any;
+    const ocrIG = userRecord.ocrIG as any;
+
     const embed = new EmbedBuilder()
         .setTitle('Pending Verification Review')
         .addFields(
             { name: 'User', value: `<@${user.id}>`, inline: true },
             { name: 'User ID', value: user.id, inline: true },
             { name: 'Submitted At', value: new Date().toLocaleString(), inline: false },
-            { name: 'YouTube OCR', value: userRecord.data.ocrYT?.valid ? 'Passed' : 'Manual Request', inline: true },
-            { name: 'Instagram OCR', value: userRecord.data.ocrIG?.valid ? 'Passed' : 'Manual Request', inline: true }
+            { name: 'YouTube OCR', value: ocrYT?.valid ? 'Passed' : 'Manual Request', inline: true },
+            { name: 'Instagram OCR', value: ocrIG?.valid ? 'Passed' : 'Manual Request', inline: true }
         )
         .setColor('#ffff00');
     const row = new ActionRowBuilder<ButtonBuilder>()
@@ -533,9 +592,12 @@ export const sendToManualReview = async (client: Client, userRecord: any, user: 
         );
     await reviewChannel.send({
         embeds: [embed],
-        files: [userRecord.data.youtubeScreenshot, userRecord.data.instagramScreenshot].filter(Boolean),
+        files: [userRecord.youtubeScreenshot, userRecord.instagramScreenshot].filter(Boolean),
         components: [row]
     });
-    userRecord.submittedForReview = true;
-    await userRecord.save();
+
+    await prisma.verification.update({
+        where: { userId: user.id },
+        data: { submittedForReview: true }
+    });
 };
